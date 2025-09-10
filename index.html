@@ -308,11 +308,26 @@ document.getElementById("toggleBtn").addEventListener("click", toggleFace);
 document.getElementById("nextBtn").addEventListener("click", ()=>goNext());
 document.getElementById("prevBtn").addEventListener("click", goPrev);
 
-window.addEventListener("keydown", (e)=>{
-  if (e.key===" "){ e.preventDefault(); toggleFace(); }
-  else if (e.key==="ArrowRight" || e.key==="n" || e.key==="N" || e.key==="Enter"){ e.preventDefault(); goNext(); }
-  else if (e.key==="ArrowLeft"){ e.preventDefault(); goPrev(); }
-  else if (e.key==="f" || e.key==="F"){ tryEnterFullscreen(); }
+function isTypingInField(e) {
+  const t = e.target;
+  return (
+    t &&
+    (
+      t.tagName === "TEXTAREA" ||
+      t.tagName === "INPUT" ||
+      t.isContentEditable
+    )
+  );
+}
+
+window.addEventListener("keydown", (e) => {
+  // Ne pas intercepter les touches si on tape dans un champ
+  if (isTypingInField(e)) return;
+
+  if (e.key === " ") { e.preventDefault(); toggleFace(); }
+  else if (e.key === "ArrowRight" || e.key === "n" || e.key === "N" || e.key === "Enter") { e.preventDefault(); goNext(); }
+  else if (e.key === "ArrowLeft") { e.preventDefault(); goPrev(); }
+  else if (e.key === "f" || e.key === "F") { tryEnterFullscreen(); }
 });
 
 function tryEnterFullscreen(){
