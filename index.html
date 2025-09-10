@@ -9,33 +9,17 @@
     html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font-family:system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     .wrap { max-width: 1100px; margin: 0 auto; padding: 20px; }
     h1 { font-size: 1.4rem; margin: 0 0 12px; }
-    .card {
-      background:#1b1b1b; border: 1px solid #2a2a2a; border-radius: 14px;
-      padding:16px; box-shadow: 0 6px 18px rgba(0,0,0,.25);
-    }
+    .card { background:#1b1b1b; border: 1px solid #2a2a2a; border-radius: 14px; padding:16px; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
     .row { display:flex; gap:14px; flex-wrap:wrap; }
     label { font-size:.95rem; color:var(--muted); }
-    textarea, input[type="text"] {
-      width:100%; padding:10px 12px; border-radius:10px; border:1px solid #333; background:#121212; color:#eee; outline:none;
-    }
-    textarea::placeholder, input::placeholder { color:#666; }
-    button {
-      background:var(--accent); color:#031d33; border:none; border-radius:10px; padding:10px 16px; font-weight:600; cursor:pointer;
-    }
+    textarea { width:100%; padding:10px 12px; border-radius:10px; border:1px solid #333; background:#121212; color:#eee; outline:none; }
+    textarea::placeholder { color:#666; }
+    button { background:var(--accent); color:#031d33; border:none; border-radius:10px; padding:10px 16px; font-weight:600; cursor:pointer; }
     button.secondary { background:#2a2a2a; color:#ddd; }
     .controls { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
     .muted { color:var(--muted); font-size:.9rem; }
-    .grid { display:grid; grid-template-columns: 1fr; gap:16px; }
-    @media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
-
-    .stage {
-      margin-top: 18px; background:#000; border-radius:14px; border:1px solid #2a2a2a; min-height: 60vh;
-      display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;
-    }
-    .stage .hud {
-      position:absolute; top:10px; left:12px; right:12px; display:flex; justify-content:space-between; align-items:center; pointer-events:none;
-      color:#ddd; font-size:.95rem;
-    }
+    .stage { margin-top: 18px; background:#000; border-radius:14px; border:1px solid #2a2a2a; min-height: 60vh; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
+    .stage .hud { position:absolute; top:10px; left:12px; right:12px; display:flex; justify-content:space-between; align-items:center; pointer-events:none; color:#ddd; font-size:.95rem; }
     .stage .hud .pill { background:rgba(255,255,255,.08); padding:6px 10px; border-radius:999px; }
     .stage img { max-width: 100%; max-height: 80vh; object-fit: contain; display:block; }
     .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.85rem; background:#222; border:1px solid #333; padding:1px 6px; border-radius:6px; color:#ddd; }
@@ -49,35 +33,19 @@
     <h1>Révisions Flashcards (RAL/CAL)</h1>
 
     <div class="card">
-      <div class="grid">
-        <div>
-          <label for="ral">RAL — Plages & exclusions</label>
-          <textarea id="ral" rows="4" placeholder="Exemples :
-RAL : 1-10 sauf 4,5
-ou juste : 1-10; 13; 20-25; !22
-(la mention 'RAL :' est facultative)"></textarea>
-        </div>
-        <div>
-          <label for="cal">CAL — Plages & exclusions</label>
-          <textarea id="cal" rows="4" placeholder="Exemples :
-CAL : 1-14 sauf 2-4
-ou juste : 1-14; 17; 20-30; !23-25
-(la mention 'CAL :' est facultative)"></textarea>
-        </div>
-      </div>
+      <label for="mix">Collez votre sélection RAL/CAL (une seule zone) :</label>
+      <textarea id="mix" rows="4" placeholder="Exemples :
+RAL : 1-10 sauf 4,5 ; CAL : 1-14 sauf 2-4
+ou
+RAL: 1-20; !3; !7 ; CAL: 10-30; 40-50; !22-25"></textarea>
 
       <div class="row" style="margin-top:12px;">
         <div class="controls">
           <label><input type="checkbox" id="shuffle" checked> Mélanger</label>
-          <label><input type="checkbox" id="sansRemise" checked> Sans remise</label>
           <label><input type="checkbox" id="pleinEcran"> Plein écran (F11)</label>
         </div>
-      </div>
-
-      <div class="row" style="margin-top:12px; align-items:center; justify-content:space-between;">
-        <div class="muted">Saisis tes listes (ex: <span class="kbd">RAL : 1-10 sauf 4,5</span> et <span class="kbd">CAL : 1-14 sauf 2-4</span>), puis lance.</div>
-        <div class="row" style="gap:8px;">
-          <button id="btnExemple" class="secondary">Remplir un exemple</button>
+        <div class="row" style="margin-left:auto; gap:8px;">
+          <button id="btnExemple" class="secondary">Exemple</button>
           <button id="btnGo">Lancer</button>
         </div>
       </div>
@@ -98,43 +66,52 @@ ou juste : 1-14; 17; 20-30; !23-25
       <button id="toggleBtn" class="secondary" style="display:none;">Basculer (Espace)</button>
       <button id="nextBtn" style="display:none;">→ Suivant</button>
     </div>
-
   </div>
 
 <script>
-/* ========= Helpers de parsing ========= */
+/* ====== Parsing d’une seule zone : RAL: ... ; CAL: ... ====== */
+function extractChapters(raw){
+  // On cherche des blocs "RAL : ... (jusqu’à CAL: ou fin)" et "CAL : ... (jusqu’à fin)"
+  // On accepte ; , et retours à la ligne.
+  const text = (raw||"").replace(/\r/g,"");
+  let ral = "", cal = "";
+
+  // RAL: capture jusqu’à "CAL:" ou fin
+  const mRal = text.match(/RAL\s*:\s*([^]*?)(?=(CAL\s*:)|$)/i);
+  if (mRal) ral = mRal[1].trim();
+
+  // CAL: capture depuis le premier "CAL:" jusqu’à fin
+  const mCal = text.match(/CAL\s*:\s*([^]*?)$/i);
+  if (mCal) cal = mCal[1].trim();
+
+  // Si l’utilisateur ne met qu’un des deux, l’autre reste vide (ok)
+  return { ral, cal };
+}
 
 function parseNumsWithExclusions(raw) {
-  // Accepte : "1-10; 13; 20-25 sauf 22, 7-8" ou "!22"
   if (!raw) return [];
-  // enleve éventuels prefix "RAL :" / "CAL :" (optionnels)
-  raw = raw.replace(/^\\s*(RAL|CAL)\\s*:\\s*/i, "").trim();
-
   // Sépare "inclusions ... sauf exclusions"
-  const parts = raw.split(/\\b(sauf|except)\\b/i);
+  const parts = raw.split(/\b(sauf|except)\b/i);
   let inclRaw = raw, exclRaw = "";
   if (parts.length >= 3) {
     inclRaw = parts[0];
-    exclRaw = parts.slice(2).join(""); // tout ce qui suit
+    exclRaw = parts.slice(2).join("");
   }
-
-  // Extraire les exclusions ponctuelles via préfixe "!"
-  const bangMatches = inclRaw.match(/!\\s*\\d+(\\s*-\\s*\\d+)?/g);
-  if (bangMatches) {
-    exclRaw = exclRaw ? (exclRaw + ";" + bangMatches.join(";")) : bangMatches.join(";");
-  }
-  inclRaw = inclRaw.replace(/!\\s*\\d+(\\s*-\\s*\\d+)?/g, ""); // nettoie
+  // Ajoute exclusions de type !X ou !A-B
+  const bang = inclRaw.match(/!\s*\d+(?:\s*-\s*\d+)?/g);
+  if (bang) exclRaw = exclRaw ? (exclRaw + ";" + bang.join(";")) : bang.join(";");
+  inclRaw = inclRaw.replace(/!\s*\d+(?:\s*-\s*\d+)?/g, "");
 
   const include = tokensToSet(inclRaw);
   const exclude = tokensToSet(exclRaw);
-  return Array.from(include).filter(n => !exclude.has(n)).sort((a,b) => a-b);
+  return Array.from(include).filter(n => !exclude.has(n)).sort((a,b)=>a-b);
 
-  function tokensToSet(s) {
+  function tokensToSet(s){
     const out = new Set();
     if (!s) return out;
     s = s.replace(/,/g, ";");
     for (const tok of s.split(";").map(t=>t.trim()).filter(Boolean)) {
-      const m = tok.match(/^(\\d+)\\s*-\\s*(\\d+)$/);
+      const m = tok.match(/^(\d+)\s*-\s*(\d+)$/);
       if (m) {
         let a = parseInt(m[1],10), b = parseInt(m[2],10);
         if (isNaN(a)||isNaN(b)) continue;
@@ -151,22 +128,23 @@ function parseNumsWithExclusions(raw) {
 
 function pad3(n){ return String(n).padStart(3,"0"); }
 
-function buildCodes(selRAL, selCAL){
+function buildCodesFromSingleField(raw){
+  const {ral, cal} = extractChapters(raw);
   const codes = [];
-  for (const n of parseNumsWithExclusions(selRAL)) codes.push(`RAL_${pad3(n)}`);
-  for (const n of parseNumsWithExclusions(selCAL)) codes.push(`CAL_${pad3(n)}`);
+  for (const n of parseNumsWithExclusions(ral)) codes.push(`RAL_${pad3(n)}`);
+  for (const n of parseNumsWithExclusions(cal)) codes.push(`CAL_${pad3(n)}`);
   return codes;
 }
 
-function imgPathsFor(code){
-  // Retourne {recto, verso} selon dossier/chapter
+/* ====== Résolution d’images (essaie plusieurs extensions) ====== */
+const exts = ["png","PNG","jpg","JPG","jpeg","JPEG","webp","WEBP"];
+
+function pathsFor(code){
   const [chap, num] = code.split("_");
   const folder = (chap==="RAL") ? "FC_RAL_slices" : "FC_CAL_slices";
   const base = `FC_${chap}_${num}`;
-  return {
-    recto: `${folder}/${base}_recto.png`,
-    verso: `${folder}/${base}_verso.png`
-  };
+  // on ne fixe pas encore l’extension; on testera
+  return { folder, base };
 }
 
 function preload(url){
@@ -178,25 +156,30 @@ function preload(url){
   });
 }
 
-/* ========= État de l’app ========= */
+async function firstExistingImage(folder, base, face){
+  // essaie base_face.ext pour chaque extension connue
+  for (const ext of exts){
+    const url = `${folder}/${base}_${face}.${ext}`;
+    if (await preload(url)) return url;
+  }
+  return null;
+}
+
+/* ====== État & DOM ====== */
 const state = {
-  deck: [],          // [{code, recto, verso}]
-  order: [],         // indices mélangés si besoin
-  idx: -1,           // index courant dans order
-  face: "recto",     // "recto" | "verso"
-  history: [],       // historique pour ←/→ (stocke {idx, face} en séquence)
-  histPos: -1,       // curseur dans l'historique
-  sansRemise: true,
+  deck: [],      // [{code, recto, verso}]
+  order: [],
+  idx: -1,
+  face: "recto",
+  history: [],
+  histPos: -1,
   shuffle: true
 };
 
-/* ========= DOM ========= */
-const $ral = document.getElementById("ral");
-const $cal = document.getElementById("cal");
+const $mix = document.getElementById("mix");
 const $btnGo = document.getElementById("btnGo");
 const $btnEx = document.getElementById("btnExemple");
 const $shuffle = document.getElementById("shuffle");
-const $sansRemise = document.getElementById("sansRemise");
 const $pleinEcran = document.getElementById("pleinEcran");
 const $status = document.getElementById("status");
 const $stage = document.getElementById("stage");
@@ -207,62 +190,52 @@ const $toggleBtn = document.getElementById("toggleBtn");
 const $nextBtn = document.getElementById("nextBtn");
 
 $btnEx.addEventListener("click", ()=>{
-  $ral.value = "RAL : 1-10 sauf 4,5";
-  $cal.value = "CAL : 1-14 sauf 2-4";
+  $mix.value = "RAL : 1-10 sauf 4,5 ; CAL : 1-14 sauf 2-4";
 });
 
 $btnGo.addEventListener("click", start);
 
 async function start(){
   state.shuffle = $shuffle.checked;
-  state.sansRemise = $sansRemise.checked;
-  state.history = [];
-  state.histPos = -1;
-  state.idx = -1;
-  state.face = "recto";
+  state.history = []; state.histPos = -1; state.idx = -1; state.face = "recto";
 
-  const codes = buildCodes($ral.value, $cal.value);
-  if (codes.length===0) {
-    setStatus("Veuillez entrer au moins une plage RAL/CAL.", true);
+  const codes = buildCodesFromSingleField($mix.value);
+  if (codes.length===0){
+    setStatus("Veuillez saisir une sélection du type : RAL : 1-10 ; CAL : 1-14", true);
     return;
   }
 
-  setStatus("Préparation des cartes… (vérification recto/verso)", false);
+  setStatus("Préparation… vérification recto/verso et extensions…", false);
 
-  // Prévalider : garder seulement les codes pour lesquels recto ET verso existent
   const deck = [];
-  let missing = [];
-  for (const c of codes){
-    const p = imgPathsFor(c);
-    const okR = await preload(p.recto);
-    const okV = await preload(p.verso);
-    if (okR && okV) deck.push({code:c, recto:p.recto, verso:p.verso});
-    else missing.push(c);
+  const missing = [];
+  for (const code of codes){
+    const {folder, base} = pathsFor(code);
+    const recto = await firstExistingImage(folder, base, "recto");
+    const verso = await firstExistingImage(folder, base, "verso");
+    if (recto && verso) deck.push({code, recto, verso});
+    else missing.push(code);
   }
 
-  if (missing.length && deck.length===0){
-    setStatus(`Aucune carte valide trouvée (ex: ${missing.slice(0,6).join(", ")}). Vérifiez vos dossiers/images.`, true);
+  if (deck.length===0){
+    setStatus(`Aucune carte valide trouvée. Exemples manquants: ${missing.slice(0,8).join(", ")}${missing.length>8?" …":""}`, true);
     return;
   }
   if (missing.length){
-    setStatus(`Certaines cartes sont incomplètes et seront ignorées : ${missing.slice(0,10).join(", ")}${missing.length>10?" …":""}`, true);
+    setStatus(`Cartes incomplètes ignorées : ${missing.slice(0,10).join(", ")}${missing.length>10?" …":""}`, true);
   } else {
     setStatus(`OK : ${deck.length} cartes prêtes.`, false);
   }
 
   state.deck = deck;
-
-  // Construire ordre
   state.order = Array.from(deck.keys());
   if (state.shuffle) shuffleInPlace(state.order);
 
-  // UI
   $stage.style.display = "";
   $prevBtn.style.display = "";
   $toggleBtn.style.display = "";
   $nextBtn.style.display = "";
 
-  // Lancer
   goNext(true);
 
   if ($pleinEcran.checked) tryEnterFullscreen();
@@ -270,7 +243,7 @@ async function start(){
 
 function setStatus(msg, isError){
   $status.textContent = msg;
-  $status.className = "status " + (isError?"error":"ok");
+  $status.className = "status " + (isError ? "error" : "ok");
 }
 
 function shuffleInPlace(arr){
@@ -280,60 +253,20 @@ function shuffleInPlace(arr){
   }
 }
 
-/* ========= Navigation & Affichage ========= */
-
+/* ====== Navigation & rendu ====== */
 function currentEntry(){
   if (state.idx<0 || state.idx>=state.order.length) return null;
-  const deckIdx = state.order[state.idx];
-  return state.deck[deckIdx] || null;
+  return state.deck[state.order[state.idx]];
 }
 
 function render(){
-  const entry = currentEntry();
-  if (!entry) return;
-  const url = (state.face==="recto") ? entry.recto : entry.verso;
+  const e = currentEntry(); if (!e) return;
+  const url = (state.face==="recto") ? e.recto : e.verso;
   $img.src = url;
-  $hudLeft.textContent = `${entry.code} — ${state.face}  •  ${state.idx+1}/${state.order.length}`;
-}
-
-function toggleFace(){
-  if (state.idx<0) return;
-  state.face = (state.face==="recto") ? "verso" : "recto";
-  pushHistory();
-  render();
-}
-
-function goNext(fromStart=false){
-  // si on n’est pas en bout d’historique, avancer le curseur d’historique
-  if (state.histPos >= 0 && state.histPos < state.history.length - 1){
-    state.histPos++;
-    const snap = state.history[state.histPos];
-    state.idx = snap.idx; state.face = snap.face;
-    render();
-    return;
-  }
-  // sinon générer la prochaine
-  if (state.idx >= state.order.length - 1) {
-    setStatus("Terminé : toutes les cartes ont été vues.", false);
-    return;
-  }
-  state.idx++;
-  state.face = "recto";
-  pushHistory();
-  render();
-}
-
-function goPrev(){
-  if (state.histPos > 0){
-    state.histPos--;
-    const snap = state.history[state.histPos];
-    state.idx = snap.idx; state.face = snap.face;
-    render();
-  }
+  $hudLeft.textContent = `${e.code} — ${state.face}  •  ${state.idx+1}/${state.order.length}`;
 }
 
 function pushHistory(){
-  // on coupe tout ce qui est après le curseur si on repart d’ici
   if (state.histPos >= 0 && state.histPos < state.history.length - 1){
     state.history = state.history.slice(0, state.histPos+1);
   }
@@ -341,8 +274,36 @@ function pushHistory(){
   state.histPos = state.history.length - 1;
 }
 
-/* ========= Boutons & Raccourcis ========= */
+function goNext(){
+  if (state.histPos >= 0 && state.histPos < state.history.length - 1){
+    state.histPos++;
+    const snap = state.history[state.histPos];
+    state.idx = snap.idx; state.face = snap.face; render();
+    return;
+  }
+  if (state.idx >= state.order.length - 1){
+    setStatus("Terminé : toutes les cartes ont été vues.", false);
+    return;
+  }
+  state.idx++; state.face = "recto";
+  pushHistory(); render();
+}
 
+function goPrev(){
+  if (state.histPos > 0){
+    state.histPos--;
+    const snap = state.history[state.histPos];
+    state.idx = snap.idx; state.face = snap.face; render();
+  }
+}
+
+function toggleFace(){
+  if (state.idx<0) return;
+  state.face = (state.face==="recto") ? "verso" : "recto";
+  pushHistory(); render();
+}
+
+/* ====== Boutons & Raccourcis ====== */
 document.getElementById("toggleBtn").addEventListener("click", toggleFace);
 document.getElementById("nextBtn").addEventListener("click", ()=>goNext());
 document.getElementById("prevBtn").addEventListener("click", goPrev);
@@ -356,11 +317,8 @@ window.addEventListener("keydown", (e)=>{
 
 function tryEnterFullscreen(){
   const el = document.documentElement;
-  if (!document.fullscreenElement){
-    if (el.requestFullscreen) el.requestFullscreen();
-  } else {
-    if (document.exitFullscreen) document.exitFullscreen();
-  }
+  if (!document.fullscreenElement){ if (el.requestFullscreen) el.requestFullscreen(); }
+  else { if (document.exitFullscreen) document.exitFullscreen(); }
 }
 </script>
 </body>
