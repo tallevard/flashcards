@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <title>Révisions Flashcards — Bêta (marquage & relecture)</title>
+  <title>Révisions Flashcards — Bêta (relecture multi-tours)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root { --bg:#111; --fg:#eee; --muted:#aaa; --accent:#4ea1ff; --ok:#98ffa6; --warn:#ffd27a; --err:#ff8a8a; }
@@ -73,7 +73,7 @@ RAL: 1-20; !3; !7 ; CAL: 10-30; 40-50; !22-25"></textarea>
   </div>
 
 <script>
-/* ===== Parsing d’une seule zone : RAL: ... ; CAL: ... ===== */
+/* ===== Parsing (RAL: ... ; CAL: ...) ===== */
 function extractChapters(raw){
   const text = (raw||"").replace(/\r/g,"");
   let ral = "", cal = "";
@@ -156,15 +156,18 @@ async function firstExistingImage(folder, base, face){
 
 /* ===== État & DOM ===== */
 const state = {
-  deck: [],      // [{code, recto, verso}]
-  order: [],
-  idx: -1,
+  deck: [],          // [{code, recto, verso}]
+  order: [],         // ordre principal
+  idx: -1,           // index dans order
   face: "recto",
   shuffle: true,
-  phase: "main",       // "main" puis "review" (relecture)
-  reviewSet: new Set(),// codes à revoir (unique)
-  reviewOrder: [],     // ordre final des cartes à revoir
-  reviewIdx: -1
+
+  phase: "main",     // "main" puis "review"
+  reviewRound: 0,    // numéro du tour de relecture (1,2,...)
+  reviewSeed: new Set(),  // récolte des cartes marquées "à revoir" pendant la phase principale
+  reviewOrder: [],        // tableau d'index dans deck pour le tour courant de relecture
+  reviewIdx: -1,          // position dans reviewOrder
+  reviewNext: new Set()   // récolte des cartes à revoir pour le prochain tour pendant la relecture
 };
 
 const $mix = document.getElementById("mix");
@@ -202,16 +205,11 @@ $btnEx.addEventListener("click", ()=>{
 $btnGo.addEventListener("click", start);
 
 async function start(){
-  // reset état
+  // reset
   state.shuffle = $shuffle.checked;
-  state.deck = [];
-  state.order = [];
-  state.idx = -1;
-  state.face = "recto";
-  state.phase = "main";
-  state.reviewSet.clear();
-  state.reviewOrder = [];
-  state.reviewIdx = -1;
+  state.deck = []; state.order = []; state.idx = -1; state.face = "recto";
+  state.phase = "main"; state.reviewRound = 0;
+  state.reviewSeed.clear(); state.reviewOrder = []; state.reviewIdx = -1; state.reviewNext.clear();
 
   const codes = buildCodesFromSingleField($mix.value);
   if (codes.length===0){
@@ -221,7 +219,6 @@ async function start(){
 
   setStatus("Préparation… vérification recto/verso et extensions…");
 
-  // filtrer: garder cartes avec recto+verso existants
   const deck = [];
   const missing = [];
   for (const code of codes){
@@ -252,10 +249,7 @@ async function start(){
   $knowBtn.style.display = "";
   $reviewBtn.style.display = "";
 
-  // activer boutons
-  $toggleBtn.disabled = false;
-  $knowBtn.disabled = false;
-  $reviewBtn.disabled = false;
+  $toggleBtn.disabled = false; $knowBtn.disabled = false; $reviewBtn.disabled = false;
 
   // première carte
   nextCardMain(true);
@@ -284,7 +278,7 @@ function render(){
   if (state.phase === "main"){
     posText = `${state.idx+1}/${state.order.length}`;
   } else {
-    posText = `Relecture ${state.reviewIdx+1}/${state.reviewOrder.length}`;
+    posText = `Relecture ${state.reviewRound} — ${state.reviewIdx+1}/${state.reviewOrder.length}`;
   }
   $hudLeft.textContent = `${e.code} — ${state.face} • ${posText}`;
 }
@@ -296,32 +290,33 @@ function toggleFace(){
   render();
 }
 
+function deckIndexOfCurrent(){
+  if (state.phase === "main") return state.order[state.idx];
+  return state.reviewOrder[state.reviewIdx];
+}
+
 function markKnow(){   // Entrée
-  // Passe à la carte suivante (main ou review selon phase)
-  if (state.phase === "main"){
-    nextCardMain();
-  } else {
+  // En relecture : on s'assure que cette carte NE RESTE PAS pour le tour suivant
+  if (state.phase === "review"){
+    const d = deckIndexOfCurrent();
+    state.reviewNext.delete(d);
     nextCardReview();
+  } else {
+    nextCardMain();
   }
 }
 
 function markReview(){ // R/r
-  // Ajoute la carte courante à la relecture (unique), puis passe à la suivante (main/review)
   const e = currentEntry(); if (!e) return;
-
-  // trouve l'index du deck courant
-  let deckIdx;
-  if (state.phase === "main"){
-    deckIdx = state.order[state.idx];
-  } else {
-    deckIdx = state.reviewOrder[state.reviewIdx];
-  }
-
-  state.reviewSet.add(deckIdx);
+  const d = deckIndexOfCurrent();
 
   if (state.phase === "main"){
+    // on l'ajoute au panier de relecture initial
+    state.reviewSeed.add(d);
     nextCardMain();
   } else {
+    // on l'ajoute au panier du prochain tour
+    state.reviewNext.add(d);
     nextCardReview();
   }
 }
@@ -329,25 +324,25 @@ function markReview(){ // R/r
 function nextCardMain(first=false){
   if (!first){
     if (state.idx >= state.order.length - 1){
-      // fin de la phase main → préparer la phase review si nécessaire
-      if (state.reviewSet.size > 0){
+      // fin de la phase main → bascule vers review si besoin
+      if (state.reviewSeed.size > 0){
         state.phase = "review";
-        state.reviewOrder = Array.from(state.reviewSet.values());
+        state.reviewRound = 1;
+        state.reviewOrder = Array.from(state.reviewSeed.values());
         if (state.shuffle) shuffleInPlace(state.reviewOrder);
         state.reviewIdx = -1;
-        setStatus(`Phase relecture : ${state.reviewOrder.length} carte(s) à revoir.`, "warn");
+        state.reviewNext.clear();
+        setStatus(`Phase relecture (tour ${state.reviewRound}) : ${state.reviewOrder.length} carte(s) à revoir.`, "warn");
         nextCardReview(true);
         return;
       } else {
-        setStatus("Terminé : toutes les cartes ont été vues.", "ok");
+        setStatus("Terminé : toutes les cartes ont été vues 👏", "ok");
         disableStudyButtons();
         return;
       }
     }
-    // sinon on avance
     state.idx++;
   } else {
-    // première carte phase main
     state.idx = 0;
   }
   state.face = "recto";
@@ -357,9 +352,24 @@ function nextCardMain(first=false){
 function nextCardReview(first=false){
   if (!first){
     if (state.reviewIdx >= state.reviewOrder.length - 1){
-      setStatus("Terminé : fin de la relecture 👏", "ok");
-      disableStudyButtons();
-      return;
+      // fin du tour courant
+      if (state.reviewNext.size > 0){
+        // préparer un nouveau tour avec ce qui reste à revoir
+        state.reviewRound += 1;
+        state.reviewOrder = Array.from(state.reviewNext.values());
+        if (state.shuffle) shuffleInPlace(state.reviewOrder);
+        state.reviewIdx = -1;
+        state.reviewNext.clear();
+        setStatus(`Relecture (tour ${state.reviewRound}) : ${state.reviewOrder.length} carte(s) restantes.`, "warn");
+        // repartir sur la première du nouveau tour
+        nextCardReview(true);
+        return;
+      } else {
+        // plus rien à revoir
+        setStatus("Terminé : fin de la relecture 👏", "ok");
+        disableStudyButtons();
+        return;
+      }
     }
     state.reviewIdx++;
   } else {
@@ -385,8 +395,8 @@ function isTypingInField(e) {
 window.addEventListener("keydown", (e)=>{
   if (isTypingInField(e)) return;
 
-  if (e.key === " "){ e.preventDefault(); toggleFace(); }       // bascule
-  else if (e.key === "Enter"){ e.preventDefault(); markKnow(); } // je connais
+  if (e.key === " "){ e.preventDefault(); toggleFace(); }          // bascule
+  else if (e.key === "Enter"){ e.preventDefault(); markKnow(); }   // je connais
   else if (e.key === "r" || e.key === "R"){ e.preventDefault(); markReview(); } // à revoir
   else if (e.key === "f" || e.key === "F"){ tryEnterFullscreen(); } // plein écran
 });
