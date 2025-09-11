@@ -2,38 +2,42 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <title>Révisions Flashcards (RAL/CAL)</title>
+  <title>Révisions Flashcards — Bêta (marquage & relecture)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root { --bg:#111; --fg:#eee; --muted:#aaa; --accent:#4ea1ff; }
+    :root { --bg:#111; --fg:#eee; --muted:#aaa; --accent:#4ea1ff; --ok:#98ffa6; --warn:#ffd27a; --err:#ff8a8a; }
     html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font-family:system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
     .wrap { max-width: 1100px; margin: 0 auto; padding: 20px; }
     h1 { font-size: 1.4rem; margin: 0 0 12px; }
     .card { background:#1b1b1b; border: 1px solid #2a2a2a; border-radius: 14px; padding:16px; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
-    .row { display:flex; gap:14px; flex-wrap:wrap; }
+    .row { display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
     label { font-size:.95rem; color:var(--muted); }
     textarea { width:100%; padding:10px 12px; border-radius:10px; border:1px solid #333; background:#121212; color:#eee; outline:none; }
     textarea::placeholder { color:#666; }
     button { background:var(--accent); color:#031d33; border:none; border-radius:10px; padding:10px 16px; font-weight:600; cursor:pointer; }
     button.secondary { background:#2a2a2a; color:#ddd; }
+    button.ok { background:#1f7a3f; color:#eaffee; }
+    button.warn { background:#7a5a1f; color:#fff6e0; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
     .controls { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
     .muted { color:var(--muted); font-size:.9rem; }
+    .status { font-size:.95rem; color:#ddd; }
+    .status.ok { color:var(--ok); }
+    .status.warn { color:var(--warn); }
+    .status.err { color:var(--err); }
     .stage { margin-top: 18px; background:#000; border-radius:14px; border:1px solid #2a2a2a; min-height: 60vh; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
     .stage .hud { position:absolute; top:10px; left:12px; right:12px; display:flex; justify-content:space-between; align-items:center; pointer-events:none; color:#ddd; font-size:.95rem; }
     .stage .hud .pill { background:rgba(255,255,255,.08); padding:6px 10px; border-radius:999px; }
     .stage img { max-width: 100%; max-height: 80vh; object-fit: contain; display:block; }
     .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.85rem; background:#222; border:1px solid #333; padding:1px 6px; border-radius:6px; color:#ddd; }
-    .status { font-size:.95rem; color:#ddd; }
-    .error { color:#ff8a8a; }
-    .ok { color:#98ffa6; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>Révisions Flashcards (RAL/CAL)</h1>
+    <h1>Révisions Flashcards — <span style="opacity:.7;">Bêta</span></h1>
 
     <div class="card">
-      <label for="mix">Collez votre sélection RAL/CAL (une seule zone) :</label>
+      <label for="mix">Collez votre sélection (une seule zone) :</label>
       <textarea id="mix" rows="4" placeholder="Exemples :
 RAL : 1-10 sauf 4,5 ; CAL : 1-14 sauf 2-4
 ou
@@ -44,9 +48,9 @@ RAL: 1-20; !3; !7 ; CAL: 10-30; 40-50; !22-25"></textarea>
           <label><input type="checkbox" id="shuffle" checked> Mélanger</label>
           <label><input type="checkbox" id="pleinEcran"> Plein écran (F11)</label>
         </div>
-        <div class="row" style="margin-left:auto; gap:8px;">
-          <button id="btnExemple" class="secondary">Exemple</button>
-          <button id="btnGo">Lancer</button>
+        <div class="row" style="gap:8px; margin-left:auto;">
+          <button id="btnExemple" class="secondary" type="button">Exemple</button>
+          <button id="btnGo" type="button">Lancer</button>
         </div>
       </div>
 
@@ -56,48 +60,35 @@ RAL: 1-20; !3; !7 ; CAL: 10-30; 40-50; !22-25"></textarea>
     <div class="stage" id="stage" style="display:none;">
       <div class="hud">
         <div class="pill" id="hudLeft">–</div>
-        <div class="pill" id="hudRight">Espace: basculer • ←/→: préc./suiv. • Entrée/N: suivant • F: plein écran</div>
+        <div class="pill" id="hudRight">Espace: basculer • Entrée: Je connais • R: à revoir • F: plein écran</div>
       </div>
       <img id="img" alt="flashcard" />
     </div>
 
-    <div class="row" style="margin-top:10px; align-items:center; gap:10px;">
-      <button id="prevBtn" class="secondary" style="display:none;">← Précédent</button>
-      <button id="toggleBtn" class="secondary" style="display:none;">Basculer (Espace)</button>
-      <button id="nextBtn" style="display:none;">→ Suivant</button>
+    <div class="row" style="margin-top:10px; gap:10px;">
+      <button id="toggleBtn" class="secondary" style="display:none;" type="button">Basculer (Espace)</button>
+      <button id="knowBtn" class="ok" style="display:none;" type="button">Je connais (Entrée)</button>
+      <button id="reviewBtn" class="warn" style="display:none;" type="button">À revoir (R)</button>
     </div>
   </div>
 
 <script>
-/* ====== Parsing d’une seule zone : RAL: ... ; CAL: ... ====== */
+/* ===== Parsing d’une seule zone : RAL: ... ; CAL: ... ===== */
 function extractChapters(raw){
-  // On cherche des blocs "RAL : ... (jusqu’à CAL: ou fin)" et "CAL : ... (jusqu’à fin)"
-  // On accepte ; , et retours à la ligne.
   const text = (raw||"").replace(/\r/g,"");
   let ral = "", cal = "";
-
-  // RAL: capture jusqu’à "CAL:" ou fin
   const mRal = text.match(/RAL\s*:\s*([^]*?)(?=(CAL\s*:)|$)/i);
   if (mRal) ral = mRal[1].trim();
-
-  // CAL: capture depuis le premier "CAL:" jusqu’à fin
   const mCal = text.match(/CAL\s*:\s*([^]*?)$/i);
   if (mCal) cal = mCal[1].trim();
-
-  // Si l’utilisateur ne met qu’un des deux, l’autre reste vide (ok)
   return { ral, cal };
 }
 
-function parseNumsWithExclusions(raw) {
+function parseNumsWithExclusions(raw){
   if (!raw) return [];
-  // Sépare "inclusions ... sauf exclusions"
   const parts = raw.split(/\b(sauf|except)\b/i);
   let inclRaw = raw, exclRaw = "";
-  if (parts.length >= 3) {
-    inclRaw = parts[0];
-    exclRaw = parts.slice(2).join("");
-  }
-  // Ajoute exclusions de type !X ou !A-B
+  if (parts.length >= 3) { inclRaw = parts[0]; exclRaw = parts.slice(2).join(""); }
   const bang = inclRaw.match(/!\s*\d+(?:\s*-\s*\d+)?/g);
   if (bang) exclRaw = exclRaw ? (exclRaw + ";" + bang.join(";")) : bang.join(";");
   inclRaw = inclRaw.replace(/!\s*\d+(?:\s*-\s*\d+)?/g, "");
@@ -110,13 +101,13 @@ function parseNumsWithExclusions(raw) {
     const out = new Set();
     if (!s) return out;
     s = s.replace(/,/g, ";");
-    for (const tok of s.split(";").map(t=>t.trim()).filter(Boolean)) {
+    for (const tok of s.split(";").map(t=>t.trim()).filter(Boolean)){
       const m = tok.match(/^(\d+)\s*-\s*(\d+)$/);
-      if (m) {
+      if (m){
         let a = parseInt(m[1],10), b = parseInt(m[2],10);
         if (isNaN(a)||isNaN(b)) continue;
         const lo = Math.min(a,b), hi = Math.max(a,b);
-        for (let i=lo; i<=hi; i++) out.add(i);
+        for (let i=lo;i<=hi;i++) out.add(i);
       } else {
         const n = parseInt(tok,10);
         if (!isNaN(n)) out.add(n);
@@ -136,14 +127,13 @@ function buildCodesFromSingleField(raw){
   return codes;
 }
 
-/* ====== Résolution d’images (essaie plusieurs extensions) ====== */
+/* ===== Résolution d’images (essaie plusieurs extensions) ===== */
 const exts = ["png","PNG","jpg","JPG","jpeg","JPEG","webp","WEBP"];
 
 function pathsFor(code){
   const [chap, num] = code.split("_");
   const folder = (chap==="RAL") ? "FC_RAL_slices" : "FC_CAL_slices";
   const base = `FC_${chap}_${num}`;
-  // on ne fixe pas encore l’extension; on testera
   return { folder, base };
 }
 
@@ -157,7 +147,6 @@ function preload(url){
 }
 
 async function firstExistingImage(folder, base, face){
-  // essaie base_face.ext pour chaque extension connue
   for (const ext of exts){
     const url = `${folder}/${base}_${face}.${ext}`;
     if (await preload(url)) return url;
@@ -165,15 +154,17 @@ async function firstExistingImage(folder, base, face){
   return null;
 }
 
-/* ====== État & DOM ====== */
+/* ===== État & DOM ===== */
 const state = {
   deck: [],      // [{code, recto, verso}]
   order: [],
   idx: -1,
   face: "recto",
-  history: [],
-  histPos: -1,
-  shuffle: true
+  shuffle: true,
+  phase: "main",       // "main" puis "review" (relecture)
+  reviewSet: new Set(),// codes à revoir (unique)
+  reviewOrder: [],     // ordre final des cartes à revoir
+  reviewIdx: -1
 };
 
 const $mix = document.getElementById("mix");
@@ -182,13 +173,28 @@ const $btnEx = document.getElementById("btnExemple");
 const $shuffle = document.getElementById("shuffle");
 const $pleinEcran = document.getElementById("pleinEcran");
 const $status = document.getElementById("status");
+
 const $stage = document.getElementById("stage");
 const $img = document.getElementById("img");
 const $hudLeft = document.getElementById("hudLeft");
-const $prevBtn = document.getElementById("prevBtn");
-const $toggleBtn = document.getElementById("toggleBtn");
-const $nextBtn = document.getElementById("nextBtn");
 
+const $toggleBtn = document.getElementById("toggleBtn");
+const $knowBtn = document.getElementById("knowBtn");
+const $reviewBtn = document.getElementById("reviewBtn");
+
+/* ===== Utils UI ===== */
+function setStatus(msg, kind){  // kind: "ok" | "warn" | "err" | undefined
+  $status.textContent = msg;
+  $status.className = "status" + (kind ? (" " + kind) : "");
+}
+function shuffleInPlace(arr){
+  for (let i=arr.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]] = [arr[j],arr[i]];
+  }
+}
+
+/* ===== Lancement ===== */
 $btnEx.addEventListener("click", ()=>{
   $mix.value = "RAL : 1-10 sauf 4,5 ; CAL : 1-14 sauf 2-4";
 });
@@ -196,17 +202,26 @@ $btnEx.addEventListener("click", ()=>{
 $btnGo.addEventListener("click", start);
 
 async function start(){
+  // reset état
   state.shuffle = $shuffle.checked;
-  state.history = []; state.histPos = -1; state.idx = -1; state.face = "recto";
+  state.deck = [];
+  state.order = [];
+  state.idx = -1;
+  state.face = "recto";
+  state.phase = "main";
+  state.reviewSet.clear();
+  state.reviewOrder = [];
+  state.reviewIdx = -1;
 
   const codes = buildCodesFromSingleField($mix.value);
   if (codes.length===0){
-    setStatus("Veuillez saisir une sélection du type : RAL : 1-10 ; CAL : 1-14", true);
+    setStatus("Veuillez saisir une sélection du type : RAL : 1-10 ; CAL : 1-14", "err");
     return;
   }
 
-  setStatus("Préparation… vérification recto/verso et extensions…", false);
+  setStatus("Préparation… vérification recto/verso et extensions…");
 
+  // filtrer: garder cartes avec recto+verso existants
   const deck = [];
   const missing = [];
   for (const code of codes){
@@ -218,118 +233,170 @@ async function start(){
   }
 
   if (deck.length===0){
-    setStatus(`Aucune carte valide trouvée. Exemples manquants: ${missing.slice(0,8).join(", ")}${missing.length>8?" …":""}`, true);
+    setStatus(`Aucune carte valide trouvée. Exemples manquants: ${missing.slice(0,8).join(", ")}${missing.length>8?" …":""}`, "err");
     return;
   }
   if (missing.length){
-    setStatus(`Cartes incomplètes ignorées : ${missing.slice(0,10).join(", ")}${missing.length>10?" …":""}`, true);
+    setStatus(`Cartes incomplètes ignorées : ${missing.slice(0,10).join(", ")}${missing.length>10?" …":""}`, "warn");
   } else {
-    setStatus(`OK : ${deck.length} cartes prêtes.`, false);
+    setStatus(`OK : ${deck.length} cartes prêtes.`, "ok");
   }
 
   state.deck = deck;
   state.order = Array.from(deck.keys());
   if (state.shuffle) shuffleInPlace(state.order);
 
+  // UI visible
   $stage.style.display = "";
-  $prevBtn.style.display = "";
   $toggleBtn.style.display = "";
-  $nextBtn.style.display = "";
+  $knowBtn.style.display = "";
+  $reviewBtn.style.display = "";
 
-  goNext(true);
+  // activer boutons
+  $toggleBtn.disabled = false;
+  $knowBtn.disabled = false;
+  $reviewBtn.disabled = false;
+
+  // première carte
+  nextCardMain(true);
 
   if ($pleinEcran.checked) tryEnterFullscreen();
 }
 
-function setStatus(msg, isError){
-  $status.textContent = msg;
-  $status.className = "status " + (isError ? "error" : "ok");
-}
-
-function shuffleInPlace(arr){
-  for (let i=arr.length-1;i>0;i--){
-    const j = Math.floor(Math.random()*(i+1));
-    [arr[i],arr[j]] = [arr[j],arr[i]];
-  }
-}
-
-/* ====== Navigation & rendu ====== */
+/* ===== Affichage ===== */
 function currentEntry(){
-  if (state.idx<0 || state.idx>=state.order.length) return null;
-  return state.deck[state.order[state.idx]];
+  if (state.phase === "main"){
+    if (state.idx<0 || state.idx>=state.order.length) return null;
+    return state.deck[state.order[state.idx]];
+  } else {
+    if (state.reviewIdx<0 || state.reviewIdx>=state.reviewOrder.length) return null;
+    const deckIdx = state.reviewOrder[state.reviewIdx];
+    return state.deck[deckIdx];
+  }
 }
 
 function render(){
   const e = currentEntry(); if (!e) return;
   const url = (state.face==="recto") ? e.recto : e.verso;
   $img.src = url;
-  $hudLeft.textContent = `${e.code} — ${state.face}  •  ${state.idx+1}/${state.order.length}`;
+
+  let posText = "";
+  if (state.phase === "main"){
+    posText = `${state.idx+1}/${state.order.length}`;
+  } else {
+    posText = `Relecture ${state.reviewIdx+1}/${state.reviewOrder.length}`;
+  }
+  $hudLeft.textContent = `${e.code} — ${state.face} • ${posText}`;
 }
 
-function pushHistory(){
-  if (state.histPos >= 0 && state.histPos < state.history.length - 1){
-    state.history = state.history.slice(0, state.histPos+1);
-  }
-  state.history.push({ idx: state.idx, face: state.face });
-  state.histPos = state.history.length - 1;
-}
-
-function goNext(){
-  if (state.histPos >= 0 && state.histPos < state.history.length - 1){
-    state.histPos++;
-    const snap = state.history[state.histPos];
-    state.idx = snap.idx; state.face = snap.face; render();
-    return;
-  }
-  if (state.idx >= state.order.length - 1){
-    setStatus("Terminé : toutes les cartes ont été vues.", false);
-    return;
-  }
-  state.idx++; state.face = "recto";
-  pushHistory(); render();
-}
-
-function goPrev(){
-  if (state.histPos > 0){
-    state.histPos--;
-    const snap = state.history[state.histPos];
-    state.idx = snap.idx; state.face = snap.face; render();
-  }
-}
-
+/* ===== Actions ===== */
 function toggleFace(){
-  if (state.idx<0) return;
+  if (!currentEntry()) return;
   state.face = (state.face==="recto") ? "verso" : "recto";
-  pushHistory(); render();
+  render();
 }
 
-/* ====== Boutons & Raccourcis ====== */
-document.getElementById("toggleBtn").addEventListener("click", toggleFace);
-document.getElementById("nextBtn").addEventListener("click", ()=>goNext());
-document.getElementById("prevBtn").addEventListener("click", goPrev);
+function markKnow(){   // Entrée
+  // Passe à la carte suivante (main ou review selon phase)
+  if (state.phase === "main"){
+    nextCardMain();
+  } else {
+    nextCardReview();
+  }
+}
 
+function markReview(){ // R/r
+  // Ajoute la carte courante à la relecture (unique), puis passe à la suivante (main/review)
+  const e = currentEntry(); if (!e) return;
+
+  // trouve l'index du deck courant
+  let deckIdx;
+  if (state.phase === "main"){
+    deckIdx = state.order[state.idx];
+  } else {
+    deckIdx = state.reviewOrder[state.reviewIdx];
+  }
+
+  state.reviewSet.add(deckIdx);
+
+  if (state.phase === "main"){
+    nextCardMain();
+  } else {
+    nextCardReview();
+  }
+}
+
+function nextCardMain(first=false){
+  if (!first){
+    if (state.idx >= state.order.length - 1){
+      // fin de la phase main → préparer la phase review si nécessaire
+      if (state.reviewSet.size > 0){
+        state.phase = "review";
+        state.reviewOrder = Array.from(state.reviewSet.values());
+        if (state.shuffle) shuffleInPlace(state.reviewOrder);
+        state.reviewIdx = -1;
+        setStatus(`Phase relecture : ${state.reviewOrder.length} carte(s) à revoir.`, "warn");
+        nextCardReview(true);
+        return;
+      } else {
+        setStatus("Terminé : toutes les cartes ont été vues.", "ok");
+        disableStudyButtons();
+        return;
+      }
+    }
+    // sinon on avance
+    state.idx++;
+  } else {
+    // première carte phase main
+    state.idx = 0;
+  }
+  state.face = "recto";
+  render();
+}
+
+function nextCardReview(first=false){
+  if (!first){
+    if (state.reviewIdx >= state.reviewOrder.length - 1){
+      setStatus("Terminé : fin de la relecture 👏", "ok");
+      disableStudyButtons();
+      return;
+    }
+    state.reviewIdx++;
+  } else {
+    state.reviewIdx = 0;
+  }
+  state.face = "recto";
+  render();
+}
+
+function disableStudyButtons(){
+  $toggleBtn.disabled = true;
+  $knowBtn.disabled = true;
+  $reviewBtn.disabled = true;
+}
+
+/* ===== Raccourcis clavier ===== */
+// Ne pas intercepter les touches si on tape dans un champ
 function isTypingInField(e) {
   const t = e.target;
-  return (
-    t &&
-    (
-      t.tagName === "TEXTAREA" ||
-      t.tagName === "INPUT" ||
-      t.isContentEditable
-    )
-  );
+  return t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.isContentEditable);
 }
 
-window.addEventListener("keydown", (e) => {
-  // Ne pas intercepter les touches si on tape dans un champ
+window.addEventListener("keydown", (e)=>{
   if (isTypingInField(e)) return;
 
-  if (e.key === " ") { e.preventDefault(); toggleFace(); }
-  else if (e.key === "ArrowRight" || e.key === "n" || e.key === "N" || e.key === "Enter") { e.preventDefault(); goNext(); }
-  else if (e.key === "ArrowLeft") { e.preventDefault(); goPrev(); }
-  else if (e.key === "f" || e.key === "F") { tryEnterFullscreen(); }
+  if (e.key === " "){ e.preventDefault(); toggleFace(); }       // bascule
+  else if (e.key === "Enter"){ e.preventDefault(); markKnow(); } // je connais
+  else if (e.key === "r" || e.key === "R"){ e.preventDefault(); markReview(); } // à revoir
+  else if (e.key === "f" || e.key === "F"){ tryEnterFullscreen(); } // plein écran
 });
 
+/* ===== Boutons ===== */
+document.getElementById("toggleBtn").addEventListener("click", toggleFace);
+document.getElementById("knowBtn").addEventListener("click", markKnow);
+document.getElementById("reviewBtn").addEventListener("click", markReview);
+
+/* ===== Plein écran ===== */
 function tryEnterFullscreen(){
   const el = document.documentElement;
   if (!document.fullscreenElement){ if (el.requestFullscreen) el.requestFullscreen(); }
