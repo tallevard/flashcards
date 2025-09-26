@@ -42,9 +42,9 @@
     <div class="card">
       <label for="mix">Collez votre sélection (autant de chapitres que vous voulez) :</label>
       <textarea id="mix" rows="4" placeholder="Exemples :
-RAL : 1-10 sauf 4,5 ; CAL : 1-14 ; BIO : 3-9
+RAL : 1-10 sauf 4,5 ; CAL : 1-14 ; Red : 3-9
 ou
-ral: 1-20; !3 ; cal: 10-30; 40-50; !22-25 ; Geo: 2-4"></textarea>
+ral: 1-20; !3 ; cal: 10-30; 40-50; !22-25 ; red: 2-4"></textarea>
 
       <div class="row" style="margin-top:12px;">
         <div class="controls">
@@ -230,7 +230,7 @@ function shuffleInPlace(arr){
 
 /* ===== Lancement ===== */
 $btnEx.addEventListener("click", ()=>{
-  $mix.value = "RAL : 1-10 sauf 4,5 ; CAL : 1-14 ; BIO : 3-9";
+  $mix.value = "RAL : 1-10 sauf 4,5 ; CAL : 1-14 ; Red : 3-9";
 });
 $btnGo.addEventListener("click", start);
 
