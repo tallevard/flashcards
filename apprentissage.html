@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <title>Révisions Flashcards — v2</title>
+  <title>Révisions Flashcards — v2 (multi-chapitres)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root { --bg:#111; --fg:#eee; --muted:#aaa; --accent:#4ea1ff; --ok:#98ffa6; --warn:#ffd27a; --err:#ff8a8a; }
@@ -37,11 +37,11 @@
     <h1>Révisions Flashcards — <span style="opacity:.7;">Apprentissage</span></h1>
 
     <div class="card">
-      <label for="mix">Collez votre sélection de questions :</label>
+      <label for="mix">Collez votre sélection (autant de chapitres que vous voulez) :</label>
       <textarea id="mix" rows="4" placeholder="Exemples :
-RAL : 1-10 sauf 4,5 ; CAL : 1-14 sauf 2-4
+RAL : 1-10 sauf 4,5 ; CAL : 1-14 ; Red : 3-9
 ou
-RAL: 1-20; !3; !7 ; CAL: 10-30; 40-50; !22-25"></textarea>
+RAL: 1-20; !3 ; CAL: 10-30; 40-50; !22-25 ; Red: 2-4"></textarea>
 
       <div class="row" style="margin-top:12px;">
         <div class="controls">
@@ -73,15 +73,50 @@ RAL: 1-20; !3; !7 ; CAL: 10-30; 40-50; !22-25"></textarea>
   </div>
 
 <script>
-/* ===== Parsing d’une seule zone : RAL: ... ; CAL: ... ===== */
-function extractChapters(raw){
+/* ===== Lecture multi-chapitres (N blocs "CHAP : ...") ===== */
+function parseChaptersBlocks(raw){
+  // Retourne un map { CHAP (tel que saisi) : "sélection" }
   const text = (raw||"").replace(/\r/g,"");
-  let ral = "", cal = "";
-  const mRal = text.match(/RAL\s*:\s*([^]*?)(?=(CAL\s*:)|$)/i);
-  if (mRal) ral = mRal[1].trim();
-  const mCal = text.match(/CAL\s*:\s*([^]*?)$/i);
-  if (mCal) cal = mCal[1].trim();
-  return { ral, cal };
+  const re = /([A-Za-z0-9]+)\s*:\s*/g;
+  const blocks = {};
+  let m, indices = [];
+  while ((m = re.exec(text)) !== null){
+    indices.push({ chap: m[1], start: re.lastIndex });
+  }
+  if (indices.length === 0){
+    return blocks; // rien trouvé
+  }
+  for (let i=0; i<indices.length; i++){
+    const { chap, start } = indices[i];
+    const end = (i < indices.length-1) ? indices[i+1].start - (indices[i+1].chap.length + 1 + 1) : text.length;
+    // NB: l'expression ci-dessus est approximative pour reculer avant "NEXTCHAP :"
+    // plus simple : on coupe à l'index du prochain match capturé.
+    const sliceEnd = (i < indices.length-1) ? indices[i+1].start -  (":".length) - 0 : text.length;
+    const block = text.slice(start, (i<indices.length-1) ? indices[i+1].start - (indices[i+1].chap.length+1+1) : text.length);
+    // On prend une méthode robuste : rescan de l'emplacement suivant
+    const nextPos = (i<indices.length-1) ? indices[i+1].start - (indices[i+1].chap.length + 1 + 1) : text.length;
+    blocks[chap] = text.slice(start, nextPos).trim();
+  }
+  return blocks;
+}
+
+// Version corrigée plus simple : découper avec positions directes
+function parseChaptersBlocksSafe(raw){
+  const text = (raw||"").replace(/\r/g,"");
+  const re = /([A-Za-z0-9]+)\s*:\s*/g;
+  const blocks = {};
+  const matches = [];
+  let m;
+  while ((m = re.exec(text)) !== null){
+    matches.push({ chap: m[1], idx: m.index, after: re.lastIndex });
+  }
+  for (let i=0; i<matches.length; i++){
+    const cur = matches[i];
+    const next = matches[i+1];
+    const content = text.slice(cur.after, next ? next.idx : text.length).trim();
+    blocks[cur.chap] = content;
+  }
+  return blocks;
 }
 
 function parseNumsWithExclusions(raw){
@@ -119,22 +154,41 @@ function parseNumsWithExclusions(raw){
 
 function pad3(n){ return String(n).padStart(3,"0"); }
 
-function buildCodesFromSingleField(raw){
-  const {ral, cal} = extractChapters(raw);
+function buildCodesFromInput(raw){
+  const blocks = parseChaptersBlocksSafe(raw);
   const codes = [];
-  for (const n of parseNumsWithExclusions(ral)) codes.push(`RAL_${pad3(n)}`);
-  for (const n of parseNumsWithExclusions(cal)) codes.push(`CAL_${pad3(n)}`);
-  return codes;
+  for (const [chapRaw, block] of Object.entries(blocks)){
+    const chap = chapRaw.trim();         // conserver la casse d'origine pour tenter les dossiers
+    const nums = parseNumsWithExclusions(block);
+    for (const n of nums){
+      codes.push({ chapRaw: chap, chapUp: chap.toUpperCase(), chapLo: chap.toLowerCase(), num: pad3(n) });
+    }
+  }
+  // format final visible: "CHAP_###" (on affiche en MAJ pour cohérence HUD)
+  return codes.map(o => ({ code: `${o.chapUp}_${o.num}`, variants: o }));
 }
 
-/* ===== Résolution d’images (essaie plusieurs extensions) ===== */
+/* ===== Résolution d’images tolérante à la casse + formats ===== */
 const exts = ["png","PNG","jpg","JPG","jpeg","JPEG","webp","WEBP"];
 
-function pathsFor(code){
-  const [chap, num] = code.split("_");
-  const folder = (chap==="RAL") ? "FC_RAL_slices" : "FC_CAL_slices";
-  const base = `FC_${chap}_${num}`;
-  return { folder, base };
+function folderCandidates(variants){
+  // essai avec la casse telle que saisie, puis MAJ, puis min
+  const cands = new Set([
+    `FC_${variants.chapRaw}_slices`,
+    `FC_${variants.chapUp}_slices`,
+    `FC_${variants.chapLo}_slices`,
+  ]);
+  return Array.from(cands);
+}
+function baseCandidates(variants){
+  // idem pour le préfixe de fichier
+  const num = variants.num;
+  const cands = new Set([
+    `FC_${variants.chapRaw}_${num}`,
+    `FC_${variants.chapUp}_${num}`,
+    `FC_${variants.chapLo}_${num}`,
+  ]);
+  return Array.from(cands);
 }
 
 function preload(url){
@@ -146,24 +200,28 @@ function preload(url){
   });
 }
 
-async function firstExistingImage(folder, base, face){
-  for (const ext of exts){
-    const url = `${folder}/${base}_${face}.${ext}`;
-    if (await preload(url)) return url;
+async function firstExistingImageMulti(variants, face){
+  for (const folder of folderCandidates(variants)){
+    for (const base of baseCandidates(variants)){
+      for (const ext of exts){
+        const url = `${folder}/${base}_${face}.${ext}`;
+        if (await preload(url)) return url;
+      }
+    }
   }
   return null;
 }
 
-/* ===== État & DOM ===== */
+/* ===== État & DOM (comportement identique à ta version) ===== */
 const state = {
   deck: [],      // [{code, recto, verso}]
   order: [],
   idx: -1,
   face: "recto",
   shuffle: true,
-  phase: "main",       // "main" puis "review" (relecture)
-  reviewSet: new Set(),// codes à revoir (unique)
-  reviewOrder: [],     // ordre final des cartes à revoir
+  phase: "main",       // "main" puis "review" (un tour, comme ta v2)
+  reviewSet: new Set(),
+  reviewOrder: [],
   reviewIdx: -1
 };
 
@@ -183,7 +241,7 @@ const $knowBtn = document.getElementById("knowBtn");
 const $reviewBtn = document.getElementById("reviewBtn");
 
 /* ===== Utils UI ===== */
-function setStatus(msg, kind){  // kind: "ok" | "warn" | "err" | undefined
+function setStatus(msg, kind){
   $status.textContent = msg;
   $status.className = "status" + (kind ? (" " + kind) : "");
 }
@@ -196,40 +254,35 @@ function shuffleInPlace(arr){
 
 /* ===== Lancement ===== */
 $btnEx.addEventListener("click", ()=>{
-  $mix.value = "RAL : 1-10 sauf 4,5 ; CAL : 1-14 sauf 2-4";
+  $mix.value = "RAL : 1-10 sauf 4,5 ; CAL : 1-14 ; Red : 3-9";
 });
 
 $btnGo.addEventListener("click", start);
 
 async function start(){
-  // reset état
+  // reset
   state.shuffle = $shuffle.checked;
-  state.deck = [];
-  state.order = [];
-  state.idx = -1;
-  state.face = "recto";
-  state.phase = "main";
-  state.reviewSet.clear();
-  state.reviewOrder = [];
-  state.reviewIdx = -1;
+  state.deck = []; state.order = []; state.idx = -1; state.face = "recto";
+  state.phase = "main"; state.reviewSet.clear(); state.reviewOrder = []; state.reviewIdx = -1;
 
-  const codes = buildCodesFromSingleField($mix.value);
-  if (codes.length===0){
-    setStatus("Veuillez saisir une sélection du type : RAL : 1-10 ; CAL : 1-14", "err");
+  const items = buildCodesFromInput($mix.value); // [{ code: 'RAL_001', variants: {...}}]
+  if (items.length===0){
+    setStatus("Veuillez saisir au moins un bloc du type : CHAP : 1-10 ; AUTRE : 3-6 sauf 4", "err");
     return;
   }
 
-  setStatus("Préparation… vérification recto/verso et extensions…");
+  setStatus("Préparation… vérification recto/verso, dossiers et extensions…");
 
-  // filtrer: garder cartes avec recto+verso existants
   const deck = [];
   const missing = [];
-  for (const code of codes){
-    const {folder, base} = pathsFor(code);
-    const recto = await firstExistingImage(folder, base, "recto");
-    const verso = await firstExistingImage(folder, base, "verso");
-    if (recto && verso) deck.push({code, recto, verso});
-    else missing.push(code);
+  for (const it of items){
+    const recto = await firstExistingImageMulti(it.variants, "recto");
+    const verso = await firstExistingImageMulti(it.variants, "verso");
+    if (recto && verso){
+      deck.push({ code: it.code, recto, verso });
+    } else {
+      missing.push(it.code);
+    }
   }
 
   if (deck.length===0){
@@ -237,7 +290,7 @@ async function start(){
     return;
   }
   if (missing.length){
-    setStatus(`Cartes incomplètes ignorées : ${missing.slice(0,10).join(", ")}${missing.length>10?" …":""}`, "warn");
+    setStatus(`Cartes incomplètes/chemins introuvables ignorés : ${missing.slice(0,10).join(", ")}${missing.length>10?" …":""}`, "warn");
   } else {
     setStatus(`OK : ${deck.length} cartes prêtes.`, "ok");
   }
@@ -246,18 +299,13 @@ async function start(){
   state.order = Array.from(deck.keys());
   if (state.shuffle) shuffleInPlace(state.order);
 
-  // UI visible
+  // UI
   $stage.style.display = "";
   $toggleBtn.style.display = "";
   $knowBtn.style.display = "";
   $reviewBtn.style.display = "";
+  $toggleBtn.disabled = $knowBtn.disabled = $reviewBtn.disabled = false;
 
-  // activer boutons
-  $toggleBtn.disabled = false;
-  $knowBtn.disabled = false;
-  $reviewBtn.disabled = false;
-
-  // première carte
   nextCardMain(true);
 
   if ($pleinEcran.checked) tryEnterFullscreen();
@@ -297,7 +345,6 @@ function toggleFace(){
 }
 
 function markKnow(){   // Entrée
-  // Passe à la carte suivante (main ou review selon phase)
   if (state.phase === "main"){
     nextCardMain();
   } else {
@@ -306,19 +353,14 @@ function markKnow(){   // Entrée
 }
 
 function markReview(){ // R/r
-  // Ajoute la carte courante à la relecture (unique), puis passe à la suivante (main/review)
   const e = currentEntry(); if (!e) return;
-
-  // trouve l'index du deck courant
   let deckIdx;
   if (state.phase === "main"){
     deckIdx = state.order[state.idx];
   } else {
     deckIdx = state.reviewOrder[state.reviewIdx];
   }
-
   state.reviewSet.add(deckIdx);
-
   if (state.phase === "main"){
     nextCardMain();
   } else {
@@ -329,7 +371,6 @@ function markReview(){ // R/r
 function nextCardMain(first=false){
   if (!first){
     if (state.idx >= state.order.length - 1){
-      // fin de la phase main → préparer la phase review si nécessaire
       if (state.reviewSet.size > 0){
         state.phase = "review";
         state.reviewOrder = Array.from(state.reviewSet.values());
@@ -344,10 +385,8 @@ function nextCardMain(first=false){
         return;
       }
     }
-    // sinon on avance
     state.idx++;
   } else {
-    // première carte phase main
     state.idx = 0;
   }
   state.face = "recto";
@@ -375,20 +414,17 @@ function disableStudyButtons(){
   $reviewBtn.disabled = true;
 }
 
-/* ===== Raccourcis clavier ===== */
-// Ne pas intercepter les touches si on tape dans un champ
+/* ===== Raccourcis clavier (désactivés quand on tape) ===== */
 function isTypingInField(e) {
   const t = e.target;
   return t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.isContentEditable);
 }
-
 window.addEventListener("keydown", (e)=>{
   if (isTypingInField(e)) return;
-
-  if (e.key === " "){ e.preventDefault(); toggleFace(); }       // bascule
-  else if (e.key === "Enter"){ e.preventDefault(); markKnow(); } // je connais
-  else if (e.key === "r" || e.key === "R"){ e.preventDefault(); markReview(); } // à revoir
-  else if (e.key === "f" || e.key === "F"){ tryEnterFullscreen(); } // plein écran
+  if (e.key === " "){ e.preventDefault(); toggleFace(); }
+  else if (e.key === "Enter"){ e.preventDefault(); markKnow(); }
+  else if (e.key === "r" || e.key === "R"){ e.preventDefault(); markReview(); }
+  else if (e.key === "f" || e.key === "F"){ tryEnterFullscreen(); }
 });
 
 /* ===== Boutons ===== */
