@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <title>Révisions Flashcards — v2 (multi-chapitres)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg:#111; --fg:#eee; --muted:#aaa; --accent:#4ea1ff; --ok:#98ffa6; --warn:#ffd27a; --err:#ff8a8a; }
+    html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font-family:system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 20px; }
+    h1 { font-size: 1.4rem; margin: 0 0 12px; }
+    .card { background:#1b1b1b; border: 1px solid #2a2a2a; border-radius: 14px; padding:16px; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+    .row { display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
+    label { font-size:.95rem; color:var(--muted); }
+    textarea { width:100%; padding:10px 12px; border-radius:10px; border:1px solid #333; background:#121212; color:#eee; outline:none; }
+    textarea::placeholder { color:#666; }
+    button { background:var(--accent); color:#031d33; border:none; border-radius:10px; padding:10px 16px; font-weight:600; cursor:pointer; }
+    button.secondary { background:#2a2a2a; color:#ddd; }
+    button.ok { background:#1f7a3f; color:#eaffee; }
+    button.warn { background:#7a5a1f; color:#fff6e0; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .controls { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .muted { color:var(--muted); font-size:.9rem; }
+    .status { font-size:.95rem; color:#ddd; }
+    .status.ok { color:var(--ok); }
+    .status.warn { color:var(--warn); }
+    .status.err { color:var(--err); }
+    .stage { margin-top: 18px; background:#000; border-radius:14px; border:1px solid #2a2a2a; min-height: 60vh; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
+    .stage .hud { position:absolute; top:10px; left:12px; right:12px; display:flex; justify-content:space-between; align-items:center; pointer-events:none; color:#ddd; font-size:.95rem; }
+    .stage .hud .pill { background:rgba(255,255,255,.08); padding:6px 10px; border-radius:999px; }
+    .stage img { max-width: 100%; max-height: 80vh; object-fit: contain; display:block; }
+    .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.85rem; background:#222; border:1px solid #333; padding:1px 6px; border-radius:6px; color:#ddd; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Révisions Flashcards — <span style="opacity:.7;">Apprentissage (multi-chapitres)</span></h1>
+
+    <div class="card">
+      <label for="mix">Collez votre sélection (autant de chapitres que vous voulez) :</label>
+      <textarea id="mix" rows="4" placeholder="Exemples :
+RAL : 1-10 sauf 4,5 ; CAL : 1-14 ; BIO : 3-9
+ou
+ral: 1-20; !3 ; cal: 10-30; 40-50; !22-25 ; Geo: 2-4"></textarea>
+
+      <div class="row" style="margin-top:12px;">
+        <div class="controls">
+          <label><input type="checkbox" id="shuffle" checked> Mélanger</label>
+          <label><input type="checkbox" id="pleinEcran"> Plein écran (F11)</label>
+        </div>
+        <div class="row" style="gap:8px; margin-left:auto;">
+          <button id="btnExemple" class="secondary" type="button">Exemple</button>
+          <button id="btnGo" type="button">Lancer</button>
+        </div>
+      </div>
+
+      <div id="status" class="status" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="stage" id="stage" style="display:none;">
+      <div class="hud">
+        <div class="pill" id="hudLeft">–</div>
+        <div class="pill" id="hudRight">Espace: basculer • Entrée: Je connais • R: à revoir • F: plein écran</div>
+      </div>
+      <img id="img" alt="flashcard" />
+    </div>
+
+    <div class="row" style="margin-top:10px; gap:10px;">
+      <button id="toggleBtn" class="secondary" style="display:none;" type="button">Basculer (Espace)</button>
+      <button id="knowBtn" class="ok" style="display:none;" type="button">Je connais (Entrée)</button>
+      <button id="reviewBtn" class="warn" style="display:none;" type="button">À revoir (R)</button>
+    </div>
+  </div>
+
+<script>
+/* ===== Lecture multi-chapitres (N blocs "CHAP : ...") ===== */
+function parseChaptersBlocks(raw){
+  // Retourne un map { CHAP (tel que saisi) : "sélection" }
+  const text = (raw||"").replace(/\r/g,"");
+  const re = /([A-Za-z0-9]+)\s*:\s*/g;
+  const blocks = {};
+  let m, indices = [];
+  while ((m = re.exec(text)) !== null){
+    indices.push({ chap: m[1], start: re.lastIndex });
+  }
+  if (indices.length === 0){
+    return blocks; // rien trouvé
+  }
+  for (let i=0; i<indices.length; i++){
+    const { chap, start } = indices[i];
+    const end = (i < indices.length-1) ? indices[i+1].start - (indices[i+1].chap.length + 1 + 1) : text.length;
+    // NB: l'expression ci-dessus est approximative pour reculer avant "NEXTCHAP :"
+    // plus simple : on coupe à l'index du prochain match capturé.
+    const sliceEnd = (i < indices.length-1) ? indices[i+1].start -  (":".length) - 0 : text.length;
+    const block = text.slice(start, (i<indices.length-1) ? indices[i+1].start - (indices[i+1].chap.length+1+1) : text.length);
+    // On prend une méthode robuste : rescan de l'emplacement suivant
+    const nextPos = (i<indices.length-1) ? indices[i+1].start - (indices[i+1].chap.length + 1 + 1) : text.length;
+    blocks[chap] = text.slice(start, nextPos).trim();
+  }
+  return blocks;
+}
+
+// Version corrigée plus simple : découper avec positions directes
+function parseChaptersBlocksSafe(raw){
+  const text = (raw||"").replace(/\r/g,"");
+  const re = /([A-Za-z0-9]+)\s*:\s*/g;
+  const blocks = {};
+  const matches = [];
+  let m;
+  while ((m = re.exec(text)) !== null){
+    matches.push({ chap: m[1], idx: m.index, after: re.lastIndex });
+  }
+  for (let i=0; i<matches.length; i++){
+    const cur = matches[i];
+    const next = matches[i+1];
+    const content = text.slice(cur.after, next ? next.idx : text.length).trim();
+    blocks[cur.chap] = content;
+  }
+  return blocks;
+}
+
+function parseNumsWithExclusions(raw){
+  if (!raw) return [];
+  const parts = raw.split(/\b(sauf|except)\b/i);
+  let inclRaw = raw, exclRaw = "";
+  if (parts.length >= 3) { inclRaw = parts[0]; exclRaw = parts.slice(2).join(""); }
+  const bang = inclRaw.match(/!\s*\d+(?:\s*-\s*\d+)?/g);
+  if (bang) exclRaw = exclRaw ? (exclRaw + ";" + bang.join(";")) : bang.join(";");
+  inclRaw = inclRaw.replace(/!\s*\d+(?:\s*-\s*\d+)?/g, "");
+
+  const include = tokensToSet(inclRaw);
+  const exclude = tokensToSet(exclRaw);
+  return Array.from(include).filter(n => !exclude.has(n)).sort((a,b)=>a-b);
+
+  function tokensToSet(s){
+    const out = new Set();
+    if (!s) return out;
+    s = s.replace(/,/g, ";");
+    for (const tok of s.split(";").map(t=>t.trim()).filter(Boolean)){
+      const m = tok.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (m){
+        let a = parseInt(m[1],10), b = parseInt(m[2],10);
+        if (isNaN(a)||isNaN(b)) continue;
+        const lo = Math.min(a,b), hi = Math.max(a,b);
+        for (let i=lo;i<=hi;i++) out.add(i);
+      } else {
+        const n = parseInt(tok,10);
+        if (!isNaN(n)) out.add(n);
+      }
+    }
+    return out;
+  }
+}
+
+function pad3(n){ return String(n).padStart(3,"0"); }
+
+function buildCodesFromInput(raw){
+  const blocks = parseChaptersBlocksSafe(raw);
+  const codes = [];
+  for (const [chapRaw, block] of Object.entries(blocks)){
+    const chap = chapRaw.trim();         // conserver la casse d'origine pour tenter les dossiers
+    const nums = parseNumsWithExclusions(block);
+    for (const n of nums){
+      codes.push({ chapRaw: chap, chapUp: chap.toUpperCase(), chapLo: chap.toLowerCase(), num: pad3(n) });
+    }
+  }
+  // format final visible: "CHAP_###" (on affiche en MAJ pour cohérence HUD)
+  return codes.map(o => ({ code: `${o.chapUp}_${o.num}`, variants: o }));
+}
+
+/* ===== Résolution d’images tolérante à la casse + formats ===== */
+const exts = ["png","PNG","jpg","JPG","jpeg","JPEG","webp","WEBP"];
+
+function folderCandidates(variants){
+  // essai avec la casse telle que saisie, puis MAJ, puis min
+  const cands = new Set([
+    `FC_${variants.chapRaw}_slices`,
+    `FC_${variants.chapUp}_slices`,
+    `FC_${variants.chapLo}_slices`,
+  ]);
+  return Array.from(cands);
+}
+function baseCandidates(variants){
+  // idem pour le préfixe de fichier
+  const num = variants.num;
+  const cands = new Set([
+    `FC_${variants.chapRaw}_${num}`,
+    `FC_${variants.chapUp}_${num}`,
+    `FC_${variants.chapLo}_${num}`,
+  ]);
+  return Array.from(cands);
+}
+
+function preload(url){
+  return new Promise(resolve=>{
+    const im = new Image();
+    im.onload = ()=> resolve(true);
+    im.onerror = ()=> resolve(false);
+    im.src = url;
+  });
+}
+
+async function firstExistingImageMulti(variants, face){
+  for (const folder of folderCandidates(variants)){
+    for (const base of baseCandidates(variants)){
+      for (const ext of exts){
+        const url = `${folder}/${base}_${face}.${ext}`;
+        if (await preload(url)) return url;
+      }
+    }
+  }
+  return null;
+}
+
+/* ===== État & DOM (comportement identique à ta version) ===== */
+const state = {
+  deck: [],      // [{code, recto, verso}]
+  order: [],
+  idx: -1,
+  face: "recto",
+  shuffle: true,
+  phase: "main",       // "main" puis "review" (un tour, comme ta v2)
+  reviewSet: new Set(),
+  reviewOrder: [],
+  reviewIdx: -1
+};
+
+const $mix = document.getElementById("mix");
+const $btnGo = document.getElementById("btnGo");
+const $btnEx = document.getElementById("btnExemple");
+const $shuffle = document.getElementById("shuffle");
+const $pleinEcran = document.getElementById("pleinEcran");
+const $status = document.getElementById("status");
+
+const $stage = document.getElementById("stage");
+const $img = document.getElementById("img");
+const $hudLeft = document.getElementById("hudLeft");
+
+const $toggleBtn = document.getElementById("toggleBtn");
+const $knowBtn = document.getElementById("knowBtn");
+const $reviewBtn = document.getElementById("reviewBtn");
+
+/* ===== Utils UI ===== */
+function setStatus(msg, kind){
+  $status.textContent = msg;
+  $status.className = "status" + (kind ? (" " + kind) : "");
+}
+function shuffleInPlace(arr){
+  for (let i=arr.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]] = [arr[j],arr[i]];
+  }
+}
+
+/* ===== Lancement ===== */
+$btnEx.addEventListener("click", ()=>{
+  $mix.value = "RAL : 1-10 sauf 4,5 ; CAL : 1-14 ; BIO : 3-9";
+});
+
+$btnGo.addEventListener("click", start);
+
+async function start(){
+  // reset
+  state.shuffle = $shuffle.checked;
+  state.deck = []; state.order = []; state.idx = -1; state.face = "recto";
+  state.phase = "main"; state.reviewSet.clear(); state.reviewOrder = []; state.reviewIdx = -1;
+
+  const items = buildCodesFromInput($mix.value); // [{ code: 'RAL_001', variants: {...}}]
+  if (items.length===0){
+    setStatus("Veuillez saisir au moins un bloc du type : CHAP : 1-10 ; AUTRE : 3-6 sauf 4", "err");
+    return;
+  }
+
+  setStatus("Préparation… vérification recto/verso, dossiers et extensions…");
+
+  const deck = [];
+  const missing = [];
+  for (const it of items){
+    const recto = await firstExistingImageMulti(it.variants, "recto");
+    const verso = await firstExistingImageMulti(it.variants, "verso");
+    if (recto && verso){
+      deck.push({ code: it.code, recto, verso });
+    } else {
+      missing.push(it.code);
+    }
+  }
+
+  if (deck.length===0){
+    setStatus(`Aucune carte valide trouvée. Exemples manquants: ${missing.slice(0,8).join(", ")}${missing.length>8?" …":""}`, "err");
+    return;
+  }
+  if (missing.length){
+    setStatus(`Cartes incomplètes/chemins introuvables ignorés : ${missing.slice(0,10).join(", ")}${missing.length>10?" …":""}`, "warn");
+  } else {
+    setStatus(`OK : ${deck.length} cartes prêtes.`, "ok");
+  }
+
+  state.deck = deck;
+  state.order = Array.from(deck.keys());
+  if (state.shuffle) shuffleInPlace(state.order);
+
+  // UI
+  $stage.style.display = "";
+  $toggleBtn.style.display = "";
+  $knowBtn.style.display = "";
+  $reviewBtn.style.display = "";
+  $toggleBtn.disabled = $knowBtn.disabled = $reviewBtn.disabled = false;
+
+  nextCardMain(true);
+
+  if ($pleinEcran.checked) tryEnterFullscreen();
+}
+
+/* ===== Affichage ===== */
+function currentEntry(){
+  if (state.phase === "main"){
+    if (state.idx<0 || state.idx>=state.order.length) return null;
+    return state.deck[state.order[state.idx]];
+  } else {
+    if (state.reviewIdx<0 || state.reviewIdx>=state.reviewOrder.length) return null;
+    const deckIdx = state.reviewOrder[state.reviewIdx];
+    return state.deck[deckIdx];
+  }
+}
+
+function render(){
+  const e = currentEntry(); if (!e) return;
+  const url = (state.face==="recto") ? e.recto : e.verso;
+  $img.src = url;
+
+  let posText = "";
+  if (state.phase === "main"){
+    posText = `${state.idx+1}/${state.order.length}`;
+  } else {
+    posText = `Relecture ${state.reviewIdx+1}/${state.reviewOrder.length}`;
+  }
+  $hudLeft.textContent = `${e.code} — ${state.face} • ${posText}`;
+}
+
+/* ===== Actions ===== */
+function toggleFace(){
+  if (!currentEntry()) return;
+  state.face = (state.face==="recto") ? "verso" : "recto";
+  render();
+}
+
+function markKnow(){   // Entrée
+  if (state.phase === "main"){
+    nextCardMain();
+  } else {
+    nextCardReview();
+  }
+}
+
+function markReview(){ // R/r
+  const e = currentEntry(); if (!e) return;
+  let deckIdx;
+  if (state.phase === "main"){
+    deckIdx = state.order[state.idx];
+  } else {
+    deckIdx = state.reviewOrder[state.reviewIdx];
+  }
+  state.reviewSet.add(deckIdx);
+  if (state.phase === "main"){
+    nextCardMain();
+  } else {
+    nextCardReview();
+  }
+}
+
+function nextCardMain(first=false){
+  if (!first){
+    if (state.idx >= state.order.length - 1){
+      if (state.reviewSet.size > 0){
+        state.phase = "review";
+        state.reviewOrder = Array.from(state.reviewSet.values());
+        if (state.shuffle) shuffleInPlace(state.reviewOrder);
+        state.reviewIdx = -1;
+        setStatus(`Phase relecture : ${state.reviewOrder.length} carte(s) à revoir.`, "warn");
+        nextCardReview(true);
+        return;
+      } else {
+        setStatus("Terminé : toutes les cartes ont été vues.", "ok");
+        disableStudyButtons();
+        return;
+      }
+    }
+    state.idx++;
+  } else {
+    state.idx = 0;
+  }
+  state.face = "recto";
+  render();
+}
+
+function nextCardReview(first=false){
+  if (!first){
+    if (state.reviewIdx >= state.reviewOrder.length - 1){
+      setStatus("Terminé : fin de la relecture 👏", "ok");
+      disableStudyButtons();
+      return;
+    }
+    state.reviewIdx++;
+  } else {
+    state.reviewIdx = 0;
+  }
+  state.face = "recto";
+  render();
+}
+
+function disableStudyButtons(){
+  $toggleBtn.disabled = true;
+  $knowBtn.disabled = true;
+  $reviewBtn.disabled = true;
+}
+
+/* ===== Raccourcis clavier (désactivés quand on tape) ===== */
+function isTypingInField(e) {
+  const t = e.target;
+  return t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.isContentEditable);
+}
+window.addEventListener("keydown", (e)=>{
+  if (isTypingInField(e)) return;
+  if (e.key === " "){ e.preventDefault(); toggleFace(); }
+  else if (e.key === "Enter"){ e.preventDefault(); markKnow(); }
+  else if (e.key === "r" || e.key === "R"){ e.preventDefault(); markReview(); }
+  else if (e.key === "f" || e.key === "F"){ tryEnterFullscreen(); }
+});
+
+/* ===== Boutons ===== */
+document.getElementById("toggleBtn").addEventListener("click", toggleFace);
+document.getElementById("knowBtn").addEventListener("click", markKnow);
+document.getElementById("reviewBtn").addEventListener("click", markReview);
+
+/* ===== Plein écran ===== */
+function tryEnterFullscreen(){
+  const el = document.documentElement;
+  if (!document.fullscreenElement){ if (el.requestFullscreen) el.requestFullscreen(); }
+  else { if (document.exitFullscreen) document.exitFullscreen(); }
+}
+</script>
+</body>
+</html>
