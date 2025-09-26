@@ -2,14 +2,15 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <title>Révisions Flashcards — v2 (multi-chapitres)</title>
+  <title>Révisions Flashcards — Apprentissage (multi-chapitres, relectures)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root { --bg:#111; --fg:#eee; --muted:#aaa; --accent:#4ea1ff; --ok:#98ffa6; --warn:#ffd27a; --err:#ff8a8a; }
-    html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font-family:system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Arial,sans-serif; }
     .wrap { max-width: 1100px; margin: 0 auto; padding: 20px; }
     h1 { font-size: 1.4rem; margin: 0 0 12px; }
-    .card { background:#1b1b1b; border: 1px solid #2a2a2a; border-radius: 14px; padding:16px; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+    .card { background:#1b1b1b; border:1px solid #2a2a2a; border-radius:14px; padding:16px; box-shadow:0 6px 18px rgba(0,0,0,.25); }
     .row { display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
     label { font-size:.95rem; color:var(--muted); }
     textarea { width:100%; padding:10px 12px; border-radius:10px; border:1px solid #333; background:#121212; color:#eee; outline:none; }
@@ -25,11 +26,13 @@
     .status.ok { color:var(--ok); }
     .status.warn { color:var(--warn); }
     .status.err { color:var(--err); }
-    .stage { margin-top: 18px; background:#000; border-radius:14px; border:1px solid #2a2a2a; min-height: 60vh; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
-    .stage .hud { position:absolute; top:10px; left:12px; right:12px; display:flex; justify-content:space-between; align-items:center; pointer-events:none; color:#ddd; font-size:.95rem; }
+    .stage { margin-top:18px; background:#000; border-radius:14px; border:1px solid #2a2a2a; min-height:60vh;
+      display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
+    .stage .hud { position:absolute; top:10px; left:12px; right:12px; display:flex; justify-content:space-between;
+      align-items:center; pointer-events:none; color:#ddd; font-size:.95rem; }
     .stage .hud .pill { background:rgba(255,255,255,.08); padding:6px 10px; border-radius:999px; }
-    .stage img { max-width: 100%; max-height: 80vh; object-fit: contain; display:block; }
-    .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.85rem; background:#222; border:1px solid #333; padding:1px 6px; border-radius:6px; color:#ddd; }
+    .stage img { max-width:100%; max-height:80vh; object-fit:contain; display:block; }
+    .kbd { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:.85rem; background:#222; border:1px solid #333; padding:1px 6px; border-radius:6px; color:#ddd; }
   </style>
 </head>
 <body>
@@ -39,9 +42,9 @@
     <div class="card">
       <label for="mix">Collez votre sélection (autant de chapitres que vous voulez) :</label>
       <textarea id="mix" rows="4" placeholder="Exemples :
-RAL : 1-10 sauf 4,5 ; CAL : 1-14 ; Red : 3-9
+RAL : 1-10 sauf 4,5 ; CAL : 1-14 ; BIO : 3-9
 ou
-RAL: 1-20; !3 ; CAL: 10-30; 40-50; !22-25 ; Red: 2-4"></textarea>
+ral: 1-20; !3 ; cal: 10-30; 40-50; !22-25 ; Geo: 2-4"></textarea>
 
       <div class="row" style="margin-top:12px;">
         <div class="controls">
@@ -73,37 +76,10 @@ RAL: 1-20; !3 ; CAL: 10-30; 40-50; !22-25 ; Red: 2-4"></textarea>
   </div>
 
 <script>
-/* ===== Lecture multi-chapitres (N blocs "CHAP : ...") ===== */
+/* ===== Parsing multi-chapitres (N blocs "CHAP : ...") ===== */
 function parseChaptersBlocks(raw){
-  // Retourne un map { CHAP (tel que saisi) : "sélection" }
   const text = (raw||"").replace(/\r/g,"");
-  const re = /([A-Za-z0-9]+)\s*:\s*/g;
-  const blocks = {};
-  let m, indices = [];
-  while ((m = re.exec(text)) !== null){
-    indices.push({ chap: m[1], start: re.lastIndex });
-  }
-  if (indices.length === 0){
-    return blocks; // rien trouvé
-  }
-  for (let i=0; i<indices.length; i++){
-    const { chap, start } = indices[i];
-    const end = (i < indices.length-1) ? indices[i+1].start - (indices[i+1].chap.length + 1 + 1) : text.length;
-    // NB: l'expression ci-dessus est approximative pour reculer avant "NEXTCHAP :"
-    // plus simple : on coupe à l'index du prochain match capturé.
-    const sliceEnd = (i < indices.length-1) ? indices[i+1].start -  (":".length) - 0 : text.length;
-    const block = text.slice(start, (i<indices.length-1) ? indices[i+1].start - (indices[i+1].chap.length+1+1) : text.length);
-    // On prend une méthode robuste : rescan de l'emplacement suivant
-    const nextPos = (i<indices.length-1) ? indices[i+1].start - (indices[i+1].chap.length + 1 + 1) : text.length;
-    blocks[chap] = text.slice(start, nextPos).trim();
-  }
-  return blocks;
-}
-
-// Version corrigée plus simple : découper avec positions directes
-function parseChaptersBlocksSafe(raw){
-  const text = (raw||"").replace(/\r/g,"");
-  const re = /([A-Za-z0-9]+)\s*:\s*/g;
+  const re = /([A-Za-z0-9]+)\s*:\s*/g; // CHAP peut contenir lettres/chiffres
   const blocks = {};
   const matches = [];
   let m;
@@ -116,7 +92,7 @@ function parseChaptersBlocksSafe(raw){
     const content = text.slice(cur.after, next ? next.idx : text.length).trim();
     blocks[cur.chap] = content;
   }
-  return blocks;
+  return blocks; // { "RAL": "1-10 sauf 4,5", "CAL": "1-14", ... }
 }
 
 function parseNumsWithExclusions(raw){
@@ -151,44 +127,39 @@ function parseNumsWithExclusions(raw){
     return out;
   }
 }
-
 function pad3(n){ return String(n).padStart(3,"0"); }
 
-function buildCodesFromInput(raw){
-  const blocks = parseChaptersBlocksSafe(raw);
-  const codes = [];
+function buildItemsFromInput(raw){
+  const blocks = parseChaptersBlocks(raw);
+  const items = []; // { code:"RAL_001", variants:{chapRaw,chapUp,chapLo,num} }
   for (const [chapRaw, block] of Object.entries(blocks)){
-    const chap = chapRaw.trim();         // conserver la casse d'origine pour tenter les dossiers
     const nums = parseNumsWithExclusions(block);
     for (const n of nums){
-      codes.push({ chapRaw: chap, chapUp: chap.toUpperCase(), chapLo: chap.toLowerCase(), num: pad3(n) });
+      const v = { chapRaw:chapRaw.trim(), chapUp:chapRaw.trim().toUpperCase(),
+                  chapLo:chapRaw.trim().toLowerCase(), num: pad3(n) };
+      items.push({ code: `${v.chapUp}_${v.num}`, variants: v });
     }
   }
-  // format final visible: "CHAP_###" (on affiche en MAJ pour cohérence HUD)
-  return codes.map(o => ({ code: `${o.chapUp}_${o.num}`, variants: o }));
+  return items;
 }
 
-/* ===== Résolution d’images tolérante à la casse + formats ===== */
+/* ===== Résolution d’images tolérante casse/format ===== */
 const exts = ["png","PNG","jpg","JPG","jpeg","JPEG","webp","WEBP"];
 
-function folderCandidates(variants){
-  // essai avec la casse telle que saisie, puis MAJ, puis min
-  const cands = new Set([
-    `FC_${variants.chapRaw}_slices`,
-    `FC_${variants.chapUp}_slices`,
-    `FC_${variants.chapLo}_slices`,
-  ]);
-  return Array.from(cands);
+function folderCandidates(v){
+  return Array.from(new Set([
+    `FC_${v.chapRaw}_slices`,
+    `FC_${v.chapUp}_slices`,
+    `FC_${v.chapLo}_slices`,
+  ]));
 }
-function baseCandidates(variants){
-  // idem pour le préfixe de fichier
-  const num = variants.num;
-  const cands = new Set([
-    `FC_${variants.chapRaw}_${num}`,
-    `FC_${variants.chapUp}_${num}`,
-    `FC_${variants.chapLo}_${num}`,
-  ]);
-  return Array.from(cands);
+function baseCandidates(v){
+  const n = v.num;
+  return Array.from(new Set([
+    `FC_${v.chapRaw}_${n}`,
+    `FC_${v.chapUp}_${n}`,
+    `FC_${v.chapLo}_${n}`,
+  ]));
 }
 
 function preload(url){
@@ -200,9 +171,9 @@ function preload(url){
   });
 }
 
-async function firstExistingImageMulti(variants, face){
-  for (const folder of folderCandidates(variants)){
-    for (const base of baseCandidates(variants)){
+async function firstExistingImageMulti(v, face){
+  for (const folder of folderCandidates(v)){
+    for (const base of baseCandidates(v)){
       for (const ext of exts){
         const url = `${folder}/${base}_${face}.${ext}`;
         if (await preload(url)) return url;
@@ -212,19 +183,24 @@ async function firstExistingImageMulti(variants, face){
   return null;
 }
 
-/* ===== État & DOM (comportement identique à ta version) ===== */
+/* ===== État ===== */
 const state = {
-  deck: [],      // [{code, recto, verso}]
-  order: [],
-  idx: -1,
+  deck: [],          // [{code, recto, verso}]
+  order: [],         // ordre principal (indices deck)
+  idx: -1,           // position dans order
   face: "recto",
   shuffle: true,
-  phase: "main",       // "main" puis "review" (un tour, comme ta v2)
-  reviewSet: new Set(),
-  reviewOrder: [],
-  reviewIdx: -1
+
+  // Relectures multi-tours
+  phase: "main",     // "main" puis "review"
+  reviewRound: 0,    // 1,2,3...
+  reviewSeed: new Set(),  // collecté pendant "main"
+  reviewOrder: [],        // indices deck pour tour courant
+  reviewIdx: -1,          // position dans reviewOrder
+  reviewNext: new Set()   // collecté pendant relecture → tour suivant
 };
 
+/* ===== DOM ===== */
 const $mix = document.getElementById("mix");
 const $btnGo = document.getElementById("btnGo");
 const $btnEx = document.getElementById("btnExemple");
@@ -240,8 +216,8 @@ const $toggleBtn = document.getElementById("toggleBtn");
 const $knowBtn = document.getElementById("knowBtn");
 const $reviewBtn = document.getElementById("reviewBtn");
 
-/* ===== Utils UI ===== */
-function setStatus(msg, kind){
+/* ===== UI Helpers ===== */
+function setStatus(msg, kind){ // kind: "ok"|"warn"|"err"|undefined
   $status.textContent = msg;
   $status.className = "status" + (kind ? (" " + kind) : "");
 }
@@ -254,21 +230,20 @@ function shuffleInPlace(arr){
 
 /* ===== Lancement ===== */
 $btnEx.addEventListener("click", ()=>{
-  $mix.value = "RAL : 1-10 sauf 4,5 ; CAL : 1-14 ; Red : 3-9";
+  $mix.value = "RAL : 1-10 sauf 4,5 ; CAL : 1-14 ; BIO : 3-9";
 });
-
 $btnGo.addEventListener("click", start);
 
 async function start(){
   // reset
   state.shuffle = $shuffle.checked;
   state.deck = []; state.order = []; state.idx = -1; state.face = "recto";
-  state.phase = "main"; state.reviewSet.clear(); state.reviewOrder = []; state.reviewIdx = -1;
+  state.phase = "main"; state.reviewRound = 0;
+  state.reviewSeed.clear(); state.reviewOrder = []; state.reviewIdx = -1; state.reviewNext.clear();
 
-  const items = buildCodesFromInput($mix.value); // [{ code: 'RAL_001', variants: {...}}]
+  const items = buildItemsFromInput($mix.value);
   if (items.length===0){
-    setStatus("Veuillez saisir au moins un bloc du type : CHAP : 1-10 ; AUTRE : 3-6 sauf 4", "err");
-    return;
+    setStatus("Saisir au moins un bloc : CHAP : 1-10 ; AUTRE : 3-6 sauf 4", "err"); return;
   }
 
   setStatus("Préparation… vérification recto/verso, dossiers et extensions…");
@@ -278,19 +253,15 @@ async function start(){
   for (const it of items){
     const recto = await firstExistingImageMulti(it.variants, "recto");
     const verso = await firstExistingImageMulti(it.variants, "verso");
-    if (recto && verso){
-      deck.push({ code: it.code, recto, verso });
-    } else {
-      missing.push(it.code);
-    }
+    if (recto && verso) deck.push({ code: it.code, recto, verso });
+    else missing.push(it.code);
   }
 
   if (deck.length===0){
-    setStatus(`Aucune carte valide trouvée. Exemples manquants: ${missing.slice(0,8).join(", ")}${missing.length>8?" …":""}`, "err");
-    return;
+    setStatus(`Aucune carte valide. Exemples introuvables: ${missing.slice(0,8).join(", ")}${missing.length>8?" …":""}`, "err"); return;
   }
   if (missing.length){
-    setStatus(`Cartes incomplètes/chemins introuvables ignorés : ${missing.slice(0,10).join(", ")}${missing.length>10?" …":""}`, "warn");
+    setStatus(`Ignorées (incomplètes/introuvables) : ${missing.slice(0,10).join(", ")}${missing.length>10?" …":""}`, "warn");
   } else {
     setStatus(`OK : ${deck.length} cartes prêtes.`, "ok");
   }
@@ -299,7 +270,7 @@ async function start(){
   state.order = Array.from(deck.keys());
   if (state.shuffle) shuffleInPlace(state.order);
 
-  // UI
+  // UI visible
   $stage.style.display = "";
   $toggleBtn.style.display = "";
   $knowBtn.style.display = "";
@@ -322,7 +293,6 @@ function currentEntry(){
     return state.deck[deckIdx];
   }
 }
-
 function render(){
   const e = currentEntry(); if (!e) return;
   const url = (state.face==="recto") ? e.recto : e.verso;
@@ -332,7 +302,7 @@ function render(){
   if (state.phase === "main"){
     posText = `${state.idx+1}/${state.order.length}`;
   } else {
-    posText = `Relecture ${state.reviewIdx+1}/${state.reviewOrder.length}`;
+    posText = `Relecture (tour ${state.reviewRound}) — ${state.reviewIdx+1}/${state.reviewOrder.length}`;
   }
   $hudLeft.textContent = `${e.code} — ${state.face} • ${posText}`;
 }
@@ -343,75 +313,81 @@ function toggleFace(){
   state.face = (state.face==="recto") ? "verso" : "recto";
   render();
 }
-
-function markKnow(){   // Entrée
-  if (state.phase === "main"){
-    nextCardMain();
-  } else {
+function deckIndexOfCurrent(){
+  if (state.phase === "main") return state.order[state.idx];
+  return state.reviewOrder[state.reviewIdx];
+}
+function markKnow(){ // Entrée
+  if (state.phase === "review"){
+    const d = deckIndexOfCurrent();
+    state.reviewNext.delete(d); // ne pas reconvoquer
     nextCardReview();
+  } else {
+    nextCardMain();
   }
 }
-
 function markReview(){ // R/r
-  const e = currentEntry(); if (!e) return;
-  let deckIdx;
+  if (!currentEntry()) return;
+  const d = deckIndexOfCurrent();
   if (state.phase === "main"){
-    deckIdx = state.order[state.idx];
-  } else {
-    deckIdx = state.reviewOrder[state.reviewIdx];
-  }
-  state.reviewSet.add(deckIdx);
-  if (state.phase === "main"){
+    state.reviewSeed.add(d);   // à revoir après la passe principale
     nextCardMain();
   } else {
+    state.reviewNext.add(d);   // reviendra au tour suivant
     nextCardReview();
   }
 }
 
+/* ===== Avancement : main → review tour 1 → review tour 2 → ... ===== */
 function nextCardMain(first=false){
   if (!first){
     if (state.idx >= state.order.length - 1){
-      if (state.reviewSet.size > 0){
+      if (state.reviewSeed.size > 0){
         state.phase = "review";
-        state.reviewOrder = Array.from(state.reviewSet.values());
+        state.reviewRound = 1;
+        state.reviewOrder = Array.from(state.reviewSeed.values());
         if (state.shuffle) shuffleInPlace(state.reviewOrder);
         state.reviewIdx = -1;
-        setStatus(`Phase relecture : ${state.reviewOrder.length} carte(s) à revoir.`, "warn");
+        state.reviewNext.clear();
+        setStatus(`Phase relecture (tour ${state.reviewRound}) : ${state.reviewOrder.length} carte(s).`, "warn");
         nextCardReview(true);
         return;
       } else {
-        setStatus("Terminé : toutes les cartes ont été vues.", "ok");
-        disableStudyButtons();
-        return;
+        setStatus("Terminé : toutes les cartes ont été vues 👏", "ok");
+        disableStudyButtons(); return;
       }
     }
     state.idx++;
   } else {
     state.idx = 0;
   }
-  state.face = "recto";
-  render();
+  state.face = "recto"; render();
 }
-
 function nextCardReview(first=false){
   if (!first){
     if (state.reviewIdx >= state.reviewOrder.length - 1){
-      setStatus("Terminé : fin de la relecture 👏", "ok");
-      disableStudyButtons();
-      return;
+      if (state.reviewNext.size > 0){
+        state.reviewRound += 1;
+        state.reviewOrder = Array.from(state.reviewNext.values());
+        if (state.shuffle) shuffleInPlace(state.reviewOrder);
+        state.reviewIdx = -1;
+        state.reviewNext.clear();
+        setStatus(`Relecture (tour ${state.reviewRound}) : ${state.reviewOrder.length} carte(s) restantes.`, "warn");
+        nextCardReview(true);
+        return;
+      } else {
+        setStatus("Terminé : fin de la relecture 👏", "ok");
+        disableStudyButtons(); return;
+      }
     }
     state.reviewIdx++;
   } else {
     state.reviewIdx = 0;
   }
-  state.face = "recto";
-  render();
+  state.face = "recto"; render();
 }
-
 function disableStudyButtons(){
-  $toggleBtn.disabled = true;
-  $knowBtn.disabled = true;
-  $reviewBtn.disabled = true;
+  $toggleBtn.disabled = true; $knowBtn.disabled = true; $reviewBtn.disabled = true;
 }
 
 /* ===== Raccourcis clavier (désactivés quand on tape) ===== */
@@ -421,10 +397,10 @@ function isTypingInField(e) {
 }
 window.addEventListener("keydown", (e)=>{
   if (isTypingInField(e)) return;
-  if (e.key === " "){ e.preventDefault(); toggleFace(); }
-  else if (e.key === "Enter"){ e.preventDefault(); markKnow(); }
-  else if (e.key === "r" || e.key === "R"){ e.preventDefault(); markReview(); }
-  else if (e.key === "f" || e.key === "F"){ tryEnterFullscreen(); }
+  if (e.key === " "){ e.preventDefault(); toggleFace(); }         // basculer
+  else if (e.key === "Enter"){ e.preventDefault(); markKnow(); }  // je connais
+  else if (e.key === "r" || e.key === "R"){ e.preventDefault(); markReview(); } // à revoir
+  else if (e.key === "f" || e.key === "F"){ tryEnterFullscreen(); } // plein écran
 });
 
 /* ===== Boutons ===== */
