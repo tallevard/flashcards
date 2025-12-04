@@ -31,7 +31,7 @@ fetch("prenoms.csv")
     .then(text => {
         eleves = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
         document.getElementById("status").innerHTML =
-            "Liste chargée : " + eleves.length + " élèves.";
+            "Liste chargé : " + eleves.length + " élèves.";
     })
     .catch(err => {
         document.getElementById("status").innerHTML =
