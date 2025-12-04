@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Tirage au sort d'élèves</title>
+<style>
+    body { font-family: Arial, sans-serif; margin: 40px; }
+    h1 { color: #333; }
+    #result { margin-top: 20px; font-size: 1.2em; }
+</style>
+</head>
+<body>
+
+<h1>Tirage au sort d'élèves</h1>
+
+<div id="status">Chargement de la liste…</div>
+
+<label for="k">Nombre d'élèves à tirer :</label>
+<input type="number" id="k" min="1" value="1"><br><br>
+
+<button onclick="tirer()">🎲 Tirer au hasard</button>
+
+<div id="result"></div>
+
+<script>
+let eleves = [];
+
+// 🔥 Charge automatiquement le fichier prenoms.csv
+fetch("prenoms.csv")
+    .then(response => response.text())
+    .then(text => {
+        eleves = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+        document.getElementById("status").innerHTML =
+            "Liste chargée : " + eleves.length + " élèves.";
+    })
+    .catch(err => {
+        document.getElementById("status").innerHTML =
+            "<span style='color:red'>Erreur : impossible de charger prenoms.csv</span>";
+        console.error(err);
+    });
+
+function tirer() {
+    const k = parseInt(document.getElementById('k').value);
+    const resultDiv = document.getElementById('result');
+
+    if (eleves.length === 0) {
+        resultDiv.innerHTML = "<span style='color:red'>⚠️ Liste non chargée.</span>";
+        return;
+    }
+
+    if (k < 1 || k > eleves.length) {
+        resultDiv.innerHTML = "<span style='color:red'>⚠️ Choisis un k entre 1 et " + eleves.length + ".</span>";
+        return;
+    }
+
+    const copie = [...eleves];
+
+    // Mélange Fisher-Yates
+    for (let i = copie.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copie[i], copie[j]] = [copie[j], copie[i]];
+    }
+
+    const tirage = copie.slice(0, k);
+
+    resultDiv.innerHTML = "<h2>Élèves tirés :</h2><ul>" +
+        tirage.map(n => "<li>" + n + "</li>").join("") +
+        "</ul>";
+}
+</script>
+
+</body>
+</html>
