@@ -31,7 +31,7 @@ fetch("prenoms.csv?cachebuster=" + Date.now())
     .then(text => {
         eleves = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
         document.getElementById("status").innerHTML =
-            "Liste chargé : " + eleves.length + " élèves.";
+            "Liste chargée : " + eleves.length + " élèves.";
     })
     .catch(err => {
         document.getElementById("status").innerHTML =
