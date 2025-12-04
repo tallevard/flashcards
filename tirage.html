@@ -26,7 +26,7 @@
 let eleves = [];
 
 // 🔥 Charge automatiquement le fichier prenoms.csv
-fetch("prenoms.csv")
+fetch("prenoms.csv?cachebuster=" + Date.now())
     .then(response => response.text())
     .then(text => {
         eleves = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
