@@ -1,0 +1,153 @@
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Entraînement : Tables de multiplication</title>
+<style>
+    body { font-family: Arial, sans-serif; margin: 40px; font-size: 18px; }
+    h1 { color: #333; }
+    #question { font-size: 1.8em; margin-top: 20px; }
+    #result { margin-top: 30px; }
+    input[type=number], input[type=text] { font-size: 1em; }
+</style>
+</head>
+<body>
+
+<h1>Entraînement : Tables de multiplication</h1>
+
+<div id="setup">
+    <label>Jusqu'à :</label>
+    <select id="maxTable">
+        <option value="10">10</option>
+        <option value="11">11</option>
+        <option value="12">12</option>
+    </select>
+    <br><br>
+
+    <label>Tables choisies (ex : 2,3,5,7) :</label>
+    <input type="text" id="tablesChoisies">
+    <br><br>
+
+    <label>Temps maximal (en secondes) :</label>
+    <input type="number" id="tempsMax" value="60">
+    <br><br>
+
+    <label>Nombre de calculs :</label>
+    <input type="number" id="nbCalculs" value="10">
+    <br><br>
+
+    <button onclick="demarrer()">Démarrer</button>
+</div>
+
+<div id="jeu" style="display:none;">
+    <div id="timer"></div>
+    <div id="question"></div>
+    <input type="number" id="reponse" autocomplete="off">
+    <button onclick="valider()">Valider</button>
+</div>
+
+<div id="result"></div>
+
+<script>
+let exercices = [];
+let index = 0;
+let startTime = 0;
+let tempsMax = 0;
+let timerInterval = null;
+let reponses = [];
+
+function demarrer() {
+    const max = parseInt(document.getElementById("maxTable").value);
+    const tables = document.getElementById("tablesChoisies").value
+                      .split(",")
+                      .map(x => parseInt(x.trim()))
+                      .filter(x => !isNaN(x));
+
+    const nb = parseInt(document.getElementById("nbCalculs").value);
+    tempsMax = parseInt(document.getElementById("tempsMax").value);
+
+    if (tables.length === 0) {
+        alert("Veuillez entrer au moins une table.");
+        return;
+    }
+
+    // Génération des exercices
+    exercices = [];
+    for (let i = 0; i < nb; i++) {
+        const a = tables[Math.floor(Math.random() * tables.length)];
+        const b = Math.floor(Math.random() * max) + 1;
+        exercices.push({ a, b, correct: a * b });
+    }
+
+    index = 0;
+    reponses = [];
+
+    document.getElementById("setup").style.display = "none";
+    document.getElementById("jeu").style.display = "block";
+
+    startTime = Date.now();
+    timerInterval = setInterval(updateTimer, 200);
+
+    afficherQuestion();
+}
+
+function updateTimer() {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const remaining = tempsMax - elapsed;
+
+    document.getElementById("timer").textContent =
+        "Temps : " + elapsed + " s (reste " + (remaining > 0 ? remaining : 0) + " s)";
+
+    if (remaining <= 0) {
+        clearInterval(timerInterval);
+        fin(true);
+    }
+}
+
+function afficherQuestion() {
+    const ex = exercices[index];
+    document.getElementById("question").textContent =
+        `${index + 1}.  ${ex.a} × ${ex.b} = ?`;
+    document.getElementById("reponse").value = "";
+    document.getElementById("reponse").focus();
+}
+
+function valider() {
+    const rep = parseInt(document.getElementById("reponse").value);
+    reponses.push(isNaN(rep) ? null : rep);
+
+    index++;
+    if (index >= exercices.length) {
+        clearInterval(timerInterval);
+        const depasse = (Date.now() - startTime) / 1000 > tempsMax;
+        fin(depasse);
+    } else {
+        afficherQuestion();
+    }
+}
+
+function fin(depasse) {
+    document.getElementById("jeu").style.display = "none";
+
+    let html = "<h2>Résultats</h2>";
+    if (depasse) html += "<p style='color:red'>⏱ Temps dépassé !</p>";
+
+    html += "<ul>";
+
+    for (let i = 0; i < exercices.length; i++) {
+        const ex = exercices[i];
+        const rep = reponses[i];
+        const ok = rep === ex.correct;
+
+        html += `<li>${ex.a} × ${ex.b} = ${ex.correct} — 
+                 Vous avez répondu : ${rep === null ? "?" : rep}
+                 ${ok ? "✔️" : "❌"}</li>`;
+    }
+
+    html += "</ul>";
+
+    document.getElementById("result").innerHTML = html;
+}
+</script>
+
+</body>
+</html>
