@@ -5,9 +5,8 @@
 <style>
     body { font-family: Arial, sans-serif; margin: 40px; font-size: 18px; }
     h1 { color: #333; }
-    #question { font-size: 1.8em; margin-top: 20px; }
+    #question { font-size: 2em; margin-top: 20px; }
     #result { margin-top: 30px; }
-    input[type=number], input[type=text] { font-size: 1em; }
 </style>
 </head>
 <body>
@@ -57,6 +56,7 @@ let reponses = [];
 
 function demarrer() {
     const max = parseInt(document.getElementById("maxTable").value);
+
     const tables = document.getElementById("tablesChoisies").value
                       .split(",")
                       .map(x => parseInt(x.trim()))
@@ -70,17 +70,32 @@ function demarrer() {
         return;
     }
 
-    // Génération des exercices
-    exercices = [];
-    for (let i = 0; i < nb; i++) {
-        const a = tables[Math.floor(Math.random() * tables.length)];
-        const b = Math.floor(Math.random() * max) + 1;
-        exercices.push({ a, b, correct: a * b });
+    // Génération de toutes les combinaisons possibles sans répétition
+    let pool = [];
+    for (let t of tables) {
+        for (let i = 1; i <= max; i++) {
+            pool.push({ a: t, b: i, correct: t * i });
+        }
     }
+
+    if (nb > pool.length) {
+        alert("Trop de calculs demandés : maximum possible = " + pool.length);
+        return;
+    }
+
+    // Mélange Fisher-Yates
+    for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+
+    // On sélectionne les nb premiers éléments
+    exercices = pool.slice(0, nb);
 
     index = 0;
     reponses = [];
 
+    // Affichage
     document.getElementById("setup").style.display = "none";
     document.getElementById("jeu").style.display = "block";
 
@@ -88,6 +103,11 @@ function demarrer() {
     timerInterval = setInterval(updateTimer, 200);
 
     afficherQuestion();
+
+    // Validation par Entrée
+    document.getElementById("reponse").addEventListener("keydown", function(event) {
+        if (event.key === "Enter") valider();
+    });
 }
 
 function updateTimer() {
@@ -106,7 +126,7 @@ function updateTimer() {
 function afficherQuestion() {
     const ex = exercices[index];
     document.getElementById("question").textContent =
-        `${index + 1}.  ${ex.a} × ${ex.b} = ?`;
+        `${ex.a} × ${ex.b} = ?`;
     document.getElementById("reponse").value = "";
     document.getElementById("reponse").focus();
 }
@@ -139,7 +159,7 @@ function fin(depasse) {
         const ok = rep === ex.correct;
 
         html += `<li>${ex.a} × ${ex.b} = ${ex.correct} — 
-                 Vous avez répondu : ${rep === null ? "?" : rep}
+                 Réponse : ${rep === null ? "?" : rep}
                  ${ok ? "✔️" : "❌"}</li>`;
     }
 
