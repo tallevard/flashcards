@@ -1,123 +1,100 @@
 <html lang="fr">
 <head>
-<meta charset="UTF-8" />
-<title>ACP dynamique</title>
+<meta charset="UTF-8">
+<title>ACP avec orientation aléatoire</title>
 <style>
   body { font-family: sans-serif; }
-  canvas { border: 1px solid #ccc; margin-top: 20px; }
+  canvas { border: 1px solid #aaa; margin-top: 20px; }
 </style>
 </head>
 
 <body>
-<h2>Analyse en Composantes Principales (ACP) – Données générées aléatoirement</h2>
-<p>Les points sont régénérés à chaque rafraîchissement. La ligne rouge est la première composante principale.</p>
+<h2>Analyse en Composantes Principales — Orientation aléatoire</h2>
+<p>Le nuage est tourné aléatoirement à chaque rechargement. La composante principale (en rouge) suit la covariance.</p>
 
 <canvas id="pcaCanvas" width="500" height="500"></canvas>
 
 <script>
-// --- 1. Génération aléatoire du nuage de points corrélés ---
-function generateData(n = 40) {
-  const pts = [];
+// --- Génère un nuage corrélé, puis le tourne aléatoirement ---
+function generateRotatedData(n = 40) {
+  const base = [];
   for (let i = 0; i < n; i++) {
-    // Génère un nuage allongé : x aléatoire, y ≈ x + bruit
-    const x = Math.random()*4 - 2;      // entre -2 et 2
-    const y = x * 0.8 + (Math.random()*0.8 - 0.4);
-    pts.push([x, y]);
+    const x = Math.random()*4 - 2;
+    const y = 0.8*x + (Math.random()*0.7 - 0.35);
+    base.push([x, y]);
   }
-  return pts;
+  // rotation aléatoire
+  const theta = Math.random() * 2 * Math.PI;
+  const cos = Math.cos(theta), sin = Math.sin(theta);
+  return base.map(([x,y]) => [cos*x - sin*y, sin*x + cos*y]);
 }
 
-const data = generateData();
+const data = generateRotatedData();
 
+// --- Centrage ---
+function mean(a){ return a.reduce((s,x)=>s+x,0)/a.length; }
+const mx = mean(data.map(p=>p[0]));
+const my = mean(data.map(p=>p[1]));
+const X = data.map(([x,y])=>[x-mx, y-my]);
 
-// --- 2. Centrage des données ---
-function mean(arr) {
-  return arr.reduce((s, x) => s + x, 0) / arr.length;
+// --- Calcul de X^T X ---
+let xx=0, xy=0, yy=0;
+for (let [x,y] of X){ xx+=x*x; xy+=x*y; yy+=y*y; }
+const M = [[xx,xy],[xy,yy]];
+
+// --- Extraction du vecteur propre dominant (ACP1) ---
+function eigenVectorMax(A){
+  const [a,b]=A[0], [c,d]=A[1];
+  const tr = a+d;
+  const det = a*d - b*c;
+  const lambda = tr/2 + Math.sqrt((tr/2)**2 - det);
+  let v = [b, lambda - a];
+  const n = Math.hypot(...v);
+  return v.map(x=>x/n);
 }
 
-let mx = mean(data.map(p => p[0]));
-let my = mean(data.map(p => p[1]));
+const v1 = eigenVectorMax(M);
 
-let X = data.map(p => [p[0] - mx, p[1] - my]);
-
-
-// --- 3. SVD 2x2 analytique pour obtenir l'axe principal ---
-function svd2x2(M) {
-  const [a, b] = M[0];
-  const [c, d] = M[1];
-
-  const A = a*a + c*c;
-  const B = a*b + c*d;
-  const C = b*b + d*d;
-
-  const trace = A + C;
-  const det = A*C - B*B;
-  const lambda1 = trace/2 + Math.sqrt((trace/2)**2 - det);
-
-  let v1 = [B, lambda1 - A];
-  const norm = Math.hypot(v1[0], v1[1]);
-  v1 = v1.map(x => x / norm);
-
-  return {v1};
-}
-
-// Construire M = X^T X
-let sumXX = 0, sumXY = 0, sumYY = 0;
-for (let p of X) {
-  sumXX += p[0]*p[0];
-  sumXY += p[0]*p[1];
-  sumYY += p[1]*p[1];
-}
-const M = [[sumXX, sumXY], [sumXY, sumYY]];
-const {v1} = svd2x2(M);
-
-
-// --- 4. Projection des données ---
-const projected = X.map(p => {
-  const t = p[0]*v1[0] + p[1]*v1[1];
+// --- Projection ---
+const projected = X.map(([x,y])=>{
+  const t = x*v1[0] + y*v1[1];
   return [t*v1[0], t*v1[1]];
 });
 
-
-// --- 5. Dessin ---
+// --- Affichage ---
 const canvas = document.getElementById("pcaCanvas");
 const ctx = canvas.getContext("2d");
 
-function toCanvas(x, y) {
-  return [
-    250 + 80*x,
-    250 - 80*y
-  ];
-}
+function toCanvas(x,y){ return [250 + 80*x, 250 - 80*y]; }
 
-function drawPoint(x, y, color) {
-  ctx.fillStyle = color;
+function drawPoint(x,y,color){
+  ctx.fillStyle=color;
   ctx.beginPath();
-  ctx.arc(x, y, 3.5, 0, 2*Math.PI);
+  ctx.arc(x,y,3,0,2*Math.PI);
   ctx.fill();
 }
 
 ctx.clearRect(0,0,500,500);
 
-// Points originaux
-for (let p of X) {
-  const [cx, cy] = toCanvas(p[0], p[1]);
-  drawPoint(cx, cy, "blue");
+// points
+for (let p of X){
+  const [cx,cy] = toCanvas(...p);
+  drawPoint(cx,cy,"blue");
 }
 
-// Axe principal (ligne rouge)
+// axe principal
 ctx.strokeStyle = "red";
 ctx.beginPath();
-let [ax1, ay1] = toCanvas(-3*v1[0], -3*v1[1]);
-let [ax2, ay2] = toCanvas(3*v1[0], 3*v1[1]);
-ctx.moveTo(ax1, ay1);
-ctx.lineTo(ax2, ay2);
+let [ax1,ay1] = toCanvas(-3*v1[0], -3*v1[1]);
+let [ax2,ay2] = toCanvas( 3*v1[0],  3*v1[1]);
+ctx.moveTo(ax1,ay1);
+ctx.lineTo(ax2,ay2);
 ctx.stroke();
 
-// Projections (points verts)
-for (let p of projected) {
-  const [cx, cy] = toCanvas(p[0], p[1]);
-  drawPoint(cx, cy, "green");
+// projections
+for (let p of projected){
+  const [cx,cy] = toCanvas(...p);
+  drawPoint(cx,cy,"green");
 }
 </script>
 
