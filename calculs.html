@@ -55,8 +55,47 @@ let startTime = 0;
 let tempsMax = 0;
 let timerInterval = null;
 
-function demarrer() {
+// utilitaires
+function randint(a, b) { // inclusif
+    return Math.floor(Math.random() * (b - a + 1)) + a;
+}
+function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
 
+// Génère un nombre "facile" : majorité 2 chiffres, parfois 3 chiffres bas
+function nombreFacile() {
+    const r = Math.random();
+    if (r < 0.75) return randint(10, 199);   // très souvent 2 chiffres / petit 3 chiffres
+    return randint(200, 499);                // un peu plus grand mais encore mental
+}
+
+// Génère un nombre "plus dur" : 3-4 chiffres raisonnables
+function nombreDifficile() {
+    const r = Math.random();
+    if (r < 0.60) return randint(100, 999);  // beaucoup de 3 chiffres
+    return randint(1000, 4000);              // quelques 4 chiffres, mais pas trop
+}
+
+function fabriquerExercice(n, op) {
+    let question, correct;
+    if (op.startsWith("-")) {
+        const d = parseInt(op);          // ex: -19
+        question = `${n}${op}`;          // ex: 835-19
+        correct = n + d;
+    } else if (op.startsWith("*")) {
+        const m = parseInt(op.substring(1)); // ex: 4
+        question = `${n} × ${m}`;
+        correct = n * m;
+    }
+    return { question, correct, key: n + op };
+}
+
+function demarrer() {
     const ops = [...document.querySelectorAll("input[type=checkbox]:checked")]
                     .map(cb => cb.value);
 
@@ -68,52 +107,52 @@ function demarrer() {
     const nb = parseInt(document.getElementById("nbCalculs").value);
     tempsMax = parseInt(document.getElementById("tempsMax").value);
 
-    exercices = [];
-    reponses = [];
-    index = 0;
+    // Au moins la moitié facile
+    const nbFaciles = Math.ceil(nb / 2);
+    const nbDifficiles = nb - nbFaciles;
 
-    // Génération des calculs
     const deja = new Set();
+    const exos = [];
 
-    while (exercices.length < nb) {
-
-        const op = ops[Math.floor(Math.random() * ops.length)];
-
-        const n = Math.floor(Math.random() * 9000) + 100; // nombres de 100 à 9099
-
-        const key = n + op;
-
-        if (deja.has(key)) continue;
-        deja.add(key);
-
-        let question, correct;
-
-        if (op.startsWith("-")) {
-            const d = parseInt(op);
-            question = `${n}${op}`;
-            correct = n + d;
-        }
-
-        if (op.startsWith("*")) {
-            const m = parseInt(op.substring(1));
-            question = `${n} × ${m}`;
-            correct = n * m;
-        }
-
-        exercices.push({ question, correct });
+    function pushUnique(ex) {
+        if (deja.has(ex.key)) return false;
+        deja.add(ex.key);
+        exos.push({ question: ex.question, correct: ex.correct });
+        return true;
     }
+
+    // 1) faciles
+    while (exos.length < nbFaciles) {
+        const op = ops[Math.floor(Math.random() * ops.length)];
+        const n = nombreFacile();
+        pushUnique(fabriquerExercice(n, op));
+    }
+
+    // 2) plus durs
+    while (exos.length < nbFaciles + nbDifficiles) {
+        const op = ops[Math.floor(Math.random() * ops.length)];
+        const n = nombreDifficile();
+        pushUnique(fabriquerExercice(n, op));
+    }
+
+    // mélange final
+    exercices = shuffle(exos);
+
+    index = 0;
+    reponses = [];
 
     document.getElementById("setup").style.display = "none";
     document.getElementById("jeu").style.display = "block";
+    document.getElementById("result").innerHTML = "";
 
     startTime = Date.now();
     timerInterval = setInterval(updateTimer, 200);
 
     afficher();
 
-    document.getElementById("reponse").addEventListener("keydown", e => {
-        if (e.key === "Enter") valider();
-    });
+    // validation par Entrée (on évite d'ajouter plusieurs listeners si on relance)
+    const input = document.getElementById("reponse");
+    input.onkeydown = (e) => { if (e.key === "Enter") valider(); };
 }
 
 function updateTimer() {
@@ -133,8 +172,9 @@ function afficher() {
     document.getElementById("question").textContent =
         "Calculer " + exercices[index].question;
 
-    document.getElementById("reponse").value = "";
-    document.getElementById("reponse").focus();
+    const input = document.getElementById("reponse");
+    input.value = "";
+    input.focus();
 }
 
 function valider() {
@@ -153,11 +193,9 @@ function valider() {
 }
 
 function fin(depasse) {
-
     document.getElementById("jeu").style.display = "none";
 
     let html = "<h2>Correction</h2>";
-
     if (depasse) html += "<p style='color:red'>⏱ Temps dépassé</p>";
 
     html += "<ul>";
@@ -166,9 +204,7 @@ function fin(depasse) {
         const rep = reponses[i];
         const ok = rep === ex.correct;
 
-        html += `<li>${ex.question} = ${ex.correct} — 
-                 Réponse : ${rep === null ? "?" : rep}
-                 ${ok ? "✔️" : "❌"}</li>`;
+        html += `<li>${ex.question} = ${ex.correct} — Réponse : ${rep === null ? "?" : rep} ${ok ? "✔️" : "❌"}</li>`;
     });
 
     html += "</ul>";
