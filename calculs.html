@@ -82,18 +82,29 @@ function nombreDifficile() {
 }
 
 function fabriquerExercice(n, op) {
+
     let question, correct;
+
     if (op.startsWith("-")) {
-        const d = parseInt(op);          // ex: -19
-        question = `${n}${op}`;          // ex: 835-19
-        correct = n + d;
-    } else if (op.startsWith("*")) {
-        const m = parseInt(op.substring(1)); // ex: 4
+        const d = Math.abs(parseInt(op));   // valeur positive
+
+        // Sécurité : éviter les résultats négatifs
+        if (n < d) return null;
+
+        question = `${n}-${d}`;
+        correct = n - d;
+    }
+
+    else if (op.startsWith("*")) {
+        const m = parseInt(op.substring(1));
+
         question = `${n} × ${m}`;
         correct = n * m;
     }
+
     return { question, correct, key: n + op };
 }
+
 
 function demarrer() {
     const ops = [...document.querySelectorAll("input[type=checkbox]:checked")]
@@ -132,7 +143,8 @@ function demarrer() {
     while (exos.length < nbFaciles + nbDifficiles) {
         const op = ops[Math.floor(Math.random() * ops.length)];
         const n = nombreDifficile();
-        pushUnique(fabriquerExercice(n, op));
+        const ex = fabriquerExercice(n, op);
+        if (ex !== null) pushUnique(ex);
     }
 
     // mélange final
