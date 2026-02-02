@@ -1,0 +1,181 @@
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Calcul mental — Entraînement</title>
+<style>
+    body { font-family: Arial, sans-serif; margin: 40px; font-size: 18px; }
+    h1 { color: #333; }
+    #question { font-size: 2em; margin-top: 20px; }
+    #result { margin-top: 30px; }
+</style>
+</head>
+<body>
+
+<h1>Entraînement — Calcul mental</h1>
+
+<div id="setup">
+
+    <p>Choisir les opérations :</p>
+
+    <label><input type="checkbox" value="-9" checked> −9</label><br>
+    <label><input type="checkbox" value="-8"> −8</label><br>
+    <label><input type="checkbox" value="-19" checked> −19</label><br>
+    <label><input type="checkbox" value="-18"> −18</label><br>
+    <label><input type="checkbox" value="-29"> −29</label><br>
+    <label><input type="checkbox" value="-28"> −28</label><br>
+    <label><input type="checkbox" value="*4" checked> ×4</label><br>
+    <label><input type="checkbox" value="*8"> ×8</label><br>
+
+    <br>
+
+    <label>Temps maximal (secondes) :</label>
+    <input type="number" id="tempsMax" value="60"><br><br>
+
+    <label>Nombre de calculs :</label>
+    <input type="number" id="nbCalculs" value="15"><br><br>
+
+    <button onclick="demarrer()">Démarrer</button>
+
+</div>
+
+<div id="jeu" style="display:none;">
+    <div id="timer"></div>
+    <div id="question"></div>
+    <input type="number" id="reponse" autocomplete="off">
+    <button onclick="valider()">Valider</button>
+</div>
+
+<div id="result"></div>
+
+<script>
+let exercices = [];
+let index = 0;
+let reponses = [];
+let startTime = 0;
+let tempsMax = 0;
+let timerInterval = null;
+
+function demarrer() {
+
+    const ops = [...document.querySelectorAll("input[type=checkbox]:checked")]
+                    .map(cb => cb.value);
+
+    if (ops.length === 0) {
+        alert("Choisir au moins une opération.");
+        return;
+    }
+
+    const nb = parseInt(document.getElementById("nbCalculs").value);
+    tempsMax = parseInt(document.getElementById("tempsMax").value);
+
+    exercices = [];
+    reponses = [];
+    index = 0;
+
+    // Génération des calculs
+    const deja = new Set();
+
+    while (exercices.length < nb) {
+
+        const op = ops[Math.floor(Math.random() * ops.length)];
+
+        const n = Math.floor(Math.random() * 9000) + 100; // nombres de 100 à 9099
+
+        const key = n + op;
+
+        if (deja.has(key)) continue;
+        deja.add(key);
+
+        let question, correct;
+
+        if (op.startsWith("-")) {
+            const d = parseInt(op);
+            question = `${n}${op}`;
+            correct = n + d;
+        }
+
+        if (op.startsWith("*")) {
+            const m = parseInt(op.substring(1));
+            question = `${n} × ${m}`;
+            correct = n * m;
+        }
+
+        exercices.push({ question, correct });
+    }
+
+    document.getElementById("setup").style.display = "none";
+    document.getElementById("jeu").style.display = "block";
+
+    startTime = Date.now();
+    timerInterval = setInterval(updateTimer, 200);
+
+    afficher();
+
+    document.getElementById("reponse").addEventListener("keydown", e => {
+        if (e.key === "Enter") valider();
+    });
+}
+
+function updateTimer() {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const remaining = tempsMax - elapsed;
+
+    document.getElementById("timer").textContent =
+        "Temps : " + elapsed + " s (reste " + (remaining > 0 ? remaining : 0) + " s)";
+
+    if (remaining <= 0) {
+        clearInterval(timerInterval);
+        fin(true);
+    }
+}
+
+function afficher() {
+    document.getElementById("question").textContent =
+        "Calculer " + exercices[index].question;
+
+    document.getElementById("reponse").value = "";
+    document.getElementById("reponse").focus();
+}
+
+function valider() {
+    const r = parseInt(document.getElementById("reponse").value);
+    reponses.push(isNaN(r) ? null : r);
+
+    index++;
+
+    if (index >= exercices.length) {
+        clearInterval(timerInterval);
+        const depasse = (Date.now() - startTime) / 1000 > tempsMax;
+        fin(depasse);
+    } else {
+        afficher();
+    }
+}
+
+function fin(depasse) {
+
+    document.getElementById("jeu").style.display = "none";
+
+    let html = "<h2>Correction</h2>";
+
+    if (depasse) html += "<p style='color:red'>⏱ Temps dépassé</p>";
+
+    html += "<ul>";
+
+    exercices.forEach((ex, i) => {
+        const rep = reponses[i];
+        const ok = rep === ex.correct;
+
+        html += `<li>${ex.question} = ${ex.correct} — 
+                 Réponse : ${rep === null ? "?" : rep}
+                 ${ok ? "✔️" : "❌"}</li>`;
+    });
+
+    html += "</ul>";
+
+    document.getElementById("result").innerHTML = html;
+}
+</script>
+
+</body>
+</html>
